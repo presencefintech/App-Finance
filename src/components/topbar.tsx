@@ -3,10 +3,13 @@ import { Bell } from 'lucide-react';
 import { EntitySwitch } from './entity-switch';
 import { LogoutButton } from './logout-button';
 
-export function Topbar({ userName, selection, unread }: { userName: string; selection: string; unread: number }) {
+export function Topbar({ userName, selection, unread, entities, organizationName }: { userName: string; selection: string; unread: number; entities: { code: string; name: string }[]; organizationName: string | null }) {
   return (
     <header className="flex h-14 items-center justify-between border-b border-border bg-card px-6">
-      <EntitySwitch current={selection} />
+      <div className="flex items-center gap-4">
+        {organizationName && <span className="hidden text-sm font-semibold sm:block">{organizationName}</span>}
+        <EntitySwitch current={selection} entities={entities} />
+      </div>
       <div className="flex items-center gap-4 text-sm text-muted">
         <Link href="/notifications" className="relative" title="Notifications">
           <Bell className="size-5" />

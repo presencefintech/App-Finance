@@ -96,7 +96,7 @@ describe('API : les lectures exigent la permission dans l’entité, pas seuleme
       budgets: await import('../src/server/modules/budgets/service'),
       stats: await import('../src/server/modules/stats/service'),
     };
-    SEC = (await prisma.entity.create({ data: { code: 'SEC', name: 'SEC SARL' } })).id;
+    SEC = (await prisma.entity.create({ data: { code: 'SEC', prefix: 'SEC', name: 'SEC SARL' } })).id;
     const person = async (name: string, role: Role) => {
       const u = await prisma.user.create({ data: { email: `${name}@t.local`, fullName: name, passwordHash: 'x', roles: { create: [{ entityId: SEC, role }] } } });
       A[name] = makeActor(u.id, [{ entityId: SEC, role }]);

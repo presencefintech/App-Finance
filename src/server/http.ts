@@ -4,6 +4,7 @@ import { ZodError } from 'zod';
 import { roleHasPermission, type Permission } from '@/lib/permissions';
 import { getCurrentUser, requestMeta, type CurrentUser, type RequestMeta } from './auth';
 import { prisma } from './db';
+import { runInOrg } from './tenant';
 import { AppError } from './errors';
 
 export interface HandlerContext {
@@ -21,6 +22,8 @@ export interface HandlerOptions {
   permission?: Permission;
   /** Routes accessibles même si la 2FA obligatoire n'est pas encore activée (enrôlement, me, logout). */
   allowPending2fa?: boolean;
+  /** Route d'administration de la plateforme (création d'organisations) : réservée aux administrateurs de la plateforme. */
+  platform?: boolean;
   /** Opération financière : l'en-tête Idempotency-Key est obligatoire, une répétition renvoie la réponse d'origine. */
   idempotent?: boolean;
 }
@@ -84,7 +87,7 @@ export function handler(
   fn: (ctx: HandlerContext) => Promise<Response>,
   options: HandlerOptions = {},
 ) {
-  const { auth = true, permission, allowPending2fa = false, idempotent = false } = options;
+  const { auth = true, permission, allowPending2fa = false, idempotent = false, platform = false } = options;
   return async (request: Request, route?: RouteContext): Promise<Response> => {
     let reservation: string | null = null;
     try {
@@ -95,26 +98,34 @@ export function handler(
       if (user?.needsTotpSetup && !allowPending2fa) {
         throw new AppError('TOTP_SETUP_REQUIRED', 403, 'Activez la double authentification pour continuer');
       }
+      if (platform && !user?.isPlatformAdmin) throw new AppError('FORBIDDEN', 403, 'Réservé à l’administration de la plateforme');
+      // Un compte sans organisation n'a accès à aucune donnée métier : seules les routes de plateforme lui sont ouvertes.
+      if (user && !user.organizationId && !user.isPlatformAdmin) {
+        throw new AppError('FORBIDDEN', 403, 'Ce compte n’est rattaché à aucune organisation');
+      }
       if (user && permission && !user.roles.some((r) => roleHasPermission(r.role, permission))) {
         throw new AppError('FORBIDDEN', 403, 'Action non autorisée');
       }
 
-      if (idempotent && user) {
-        const reserved = await reserveIdempotencyKey(user, request);
-        if ('replay' in reserved) return reserved.replay;
-        reservation = reserved.id;
-      }
+      // Tout le traitement s'exécute dans le contexte de l'organisation : la base ne montre que ses lignes (RLS).
+      return await runInOrg(user?.organizationId ?? null, async () => {
+        if (idempotent && user) {
+          const reserved = await reserveIdempotencyKey(user, request);
+          if ('replay' in reserved) return reserved.replay;
+          reservation = reserved.id;
+        }
 
-      const response = await fn({ request, params, user, meta: requestMeta(request) });
+        const response = await fn({ request, params, user, meta: requestMeta(request) });
 
-      if (reservation) {
-        const body = await response.clone().text();
-        await prisma.idempotencyKey.update({
-          where: { id: reservation },
-          data: { responseStatus: response.status, responseBody: body },
-        });
-      }
-      return response;
+        if (reservation) {
+          const body = await response.clone().text();
+          await prisma.idempotencyKey.update({
+            where: { id: reservation },
+            data: { responseStatus: response.status, responseBody: body },
+          });
+        }
+        return response;
+      });
     } catch (err) {
       // Échec : la clé est libérée pour permettre de réessayer après correction.
       if (reservation) await prisma.idempotencyKey.delete({ where: { id: reservation } }).catch(() => undefined);

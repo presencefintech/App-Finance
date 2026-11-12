@@ -12,6 +12,8 @@ export function makeActor(
     fullName: id,
     sessionId: `session-${id}`,
     roles,
+    organizationId: process.env.TEST_ORG_ID ?? null,
+    isPlatformAdmin: false,
     stepUpUntil: opts.stepUp === false ? null : new Date(Date.now() + 5 * 60_000),
     totpEnabled: true,
     needsTotpSetup: false,

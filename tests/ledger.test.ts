@@ -22,8 +22,8 @@ beforeAll(async () => {
   ledger = await import('../src/server/ledger');
   accounts = await import('../src/server/modules/accounts/service');
   transactions = await import('../src/server/modules/transactions/service');
-  SEC = (await prisma.entity.create({ data: { code: 'SEC', name: 'SEC SARL' } })).id;
-  ECOLE = (await prisma.entity.create({ data: { code: 'ECOLE', name: 'École' } })).id;
+  SEC = (await prisma.entity.create({ data: { code: 'SEC', prefix: 'SEC', name: 'SEC SARL' } })).id;
+  ECOLE = (await prisma.entity.create({ data: { code: 'ECOLE', prefix: 'ECO', name: 'École' } })).id;
 });
 
 afterAll(async () => {

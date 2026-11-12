@@ -14,7 +14,7 @@ export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
   // Un rôle sans accès au tableau de bord (ex. demandeur) atterrit sur sa première page autorisée.
-  if (!canAccessPath('/', user.roles)) redirect(landingPath(user.roles));
+  if (!canAccessPath('/', user.roles, user.isPlatformAdmin)) redirect(landingPath(user.roles, user.isPlatformAdmin));
   const { entities, selection } = await getSelectedEntities(user);
   const data = await dashboard(user, entities.map((e) => e.id));
   if (data.length === 0) return <Card>Aucune donnée financière n’est accessible avec vos droits.</Card>;

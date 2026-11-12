@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, FileText, ArrowDownToLine, ArrowUpFromLine, Wallet, Landmark, Repeat, PiggyBank, Scale,
-  BarChart3, Settings, UserRound, ArrowLeftRight, ScrollText, BookOpen, type LucideIcon,
+  BarChart3, Settings, UserRound, ArrowLeftRight, ScrollText, BookOpen, Building2, type LucideIcon,
 } from 'lucide-react';
 import type { NavIcon } from '@/lib/navigation';
 import { cn } from '@/lib/cn';
@@ -12,7 +12,7 @@ import { cn } from '@/lib/cn';
 const ICONS: Record<NavIcon, LucideIcon> = {
   dashboard: LayoutDashboard, requests: FileText, income: ArrowDownToLine, expense: ArrowUpFromLine, cash: Wallet,
   bank: Landmark, advances: Repeat, budgets: PiggyBank, reconciliation: Scale, rates: ArrowLeftRight,
-  reports: BarChart3, registers: BookOpen, audit: ScrollText, settings: Settings, profile: UserRound,
+  reports: BarChart3, registers: BookOpen, audit: ScrollText, settings: Settings, profile: UserRound, platform: Building2,
 };
 
 export interface SidebarItem { href: string; label: string; icon: NavIcon }

@@ -7,3 +7,5 @@ src/generated
 *.tsbuildinfo
 next-env.d.ts
 .railway
+
+.vercel

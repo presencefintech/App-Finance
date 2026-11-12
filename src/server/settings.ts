@@ -11,7 +11,7 @@ const DEFAULT_CONTROLLER_LIMIT: Record<Currency, string> = { USD: '500', CDF: '1
 const DEFAULT_STEP_UP_THRESHOLD: Record<Currency, string> = { USD: '250', CDF: '700000' };
 
 export async function getSetting(db: Db, key: string): Promise<string | null> {
-  return (await db.setting.findUnique({ where: { key } }))?.value ?? null;
+  return (await db.setting.findFirst({ where: { key } }))?.value ?? null;
 }
 
 /** Équipe trop petite : l'approbateur peut aussi décaisser (mention dans l'audit). Défaut : non. */

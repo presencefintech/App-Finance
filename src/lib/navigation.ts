@@ -3,7 +3,7 @@ import { roleHasPermission, type Permission } from './permissions';
 
 export type NavIcon =
   | 'dashboard' | 'requests' | 'income' | 'expense' | 'cash' | 'bank' | 'advances' | 'budgets' | 'reconciliation'
-  | 'rates' | 'reports' | 'registers' | 'audit' | 'settings' | 'profile';
+  | 'rates' | 'reports' | 'registers' | 'audit' | 'settings' | 'profile' | 'platform';
 
 export interface NavItem {
   href: string;
@@ -13,6 +13,8 @@ export interface NavItem {
   permissions?: Permission[];
   /** …ou l'un de ces rôles. Sans condition : visible par tout utilisateur connecté. */
   roles?: Role[];
+  /** Réservé aux administrateurs de la plateforme (gestion des organisations clientes). */
+  platformOnly?: boolean;
 }
 
 /**
@@ -20,6 +22,7 @@ export interface NavItem {
  * des permissions (src/lib/permissions.ts) lui accorde. Les services refont toujours le contrôle côté serveur.
  */
 export const NAV_ITEMS: NavItem[] = [
+  { href: '/plateforme', label: 'Organisations', icon: 'platform', platformOnly: true },
   { href: '/', label: 'Tableau de bord', icon: 'dashboard', permissions: ['account.read'] },
   { href: '/demandes', label: 'Demandes de fonds', icon: 'requests', permissions: ['fundRequest.create', 'fundRequest.review', 'fundRequest.approve', 'fundRequest.disburse', 'fundRequest.close'], roles: ['VIEWER'] },
   { href: '/recettes', label: 'Recettes', icon: 'income', permissions: ['account.read'] },
@@ -37,22 +40,24 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/profil', label: 'Mon profil', icon: 'profile' },
 ];
 
-export function canSee(item: NavItem, roles: readonly { role: Role }[]): boolean {
+export function canSee(item: NavItem, roles: readonly { role: Role }[], isPlatformAdmin = false): boolean {
+  if (item.platformOnly) return isPlatformAdmin;
   if (!item.permissions && !item.roles) return true;
   return roles.some(
     (r) => item.roles?.includes(r.role) || item.permissions?.some((p) => roleHasPermission(r.role, p)),
   );
 }
 
-export const visibleNav = (roles: readonly { role: Role }[]): NavItem[] => NAV_ITEMS.filter((i) => canSee(i, roles));
+export const visibleNav = (roles: readonly { role: Role }[], isPlatformAdmin = false): NavItem[] =>
+  NAV_ITEMS.filter((i) => canSee(i, roles, isPlatformAdmin));
 
 /** Page d'atterrissage : le tableau de bord si autorisé, sinon la première page accessible. */
-export function landingPath(roles: readonly { role: Role }[]): string {
-  return visibleNav(roles)[0]?.href ?? '/profil';
+export function landingPath(roles: readonly { role: Role }[], isPlatformAdmin = false): string {
+  return visibleNav(roles, isPlatformAdmin)[0]?.href ?? '/profil';
 }
 
 /** L'URL (ex. /parametres/utilisateurs) est-elle accessible ? On compare au préfixe de menu le plus long. */
-export function canAccessPath(path: string, roles: readonly { role: Role }[]): boolean {
+export function canAccessPath(path: string, roles: readonly { role: Role }[], isPlatformAdmin = false): boolean {
   const match = [...NAV_ITEMS].filter((i) => (i.href === '/' ? path === '/' : path === i.href || path.startsWith(`${i.href}/`))).sort((a, b) => b.href.length - a.href.length)[0];
-  return match ? canSee(match, roles) : true;
+  return match ? canSee(match, roles, isPlatformAdmin) : true;
 }

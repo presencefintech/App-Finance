@@ -5,22 +5,21 @@ import { prisma } from './db';
 import { accessibleEntityIds } from './permissions';
 
 export const ENTITY_COOKIE = 'sfc_entity';
-export type EntitySelection = 'SEC' | 'ECOLE' | 'ALL';
+/** 'ALL' = toutes les entités de l'organisation ; sinon le code d'une entité (ex. SEC). */
+export type EntitySelection = string;
 
 /**
- * Entités affichées d'après le sélecteur global (cookie), toujours bornées aux droits de l'utilisateur.
- * 'ALL' = vue consolidée : les entités restent côte à côte, jamais fusionnées (règle 9).
+ * Entités affichées d'après le sélecteur global (cookie), bornées aux droits de l'utilisateur ET (par la RLS) à son
+ * organisation. 'ALL' = vue consolidée de l'organisation : les entités restent côte à côte, jamais fusionnées.
  */
 export async function getSelectedEntities(user: CurrentUser) {
   const raw = (await cookies()).get(ENTITY_COOKIE)?.value;
-  const selection: EntitySelection = raw === 'SEC' || raw === 'ECOLE' ? raw : 'ALL';
-  const entities = await prisma.entity.findMany({
-    where: {
-      id: { in: accessibleEntityIds(user) },
-      ...(selection === 'ALL' ? {} : { code: selection }),
-    },
+  const all = await prisma.entity.findMany({
+    where: { id: { in: accessibleEntityIds(user) } },
     select: { id: true, code: true, name: true },
     orderBy: { code: 'asc' },
   });
-  return { selection, entities };
+  const chosen = raw && raw !== 'ALL' ? all.filter((e) => e.code === raw) : [];
+  const selection: EntitySelection = chosen.length > 0 ? raw! : 'ALL';
+  return { selection, entities: chosen.length > 0 ? chosen : all, available: all };
 }

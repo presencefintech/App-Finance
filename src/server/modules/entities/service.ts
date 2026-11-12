@@ -17,12 +17,17 @@ export async function listAllEntityNames() {
   return prisma.entity.findMany({ select: { id: true, name: true }, orderBy: { code: 'asc' } });
 }
 
-/** « SEC » | « ECOLE » | « ALL » (ou vide) → identifiants d'entités, toujours bornés aux droits de l'utilisateur. */
+/** Code d'entité de l'organisation | « ALL » (ou vide) → identifiants d'entités, bornés aux droits de l'utilisateur. */
 export async function resolveEntityIds(user: CurrentUser, selection?: string | null): Promise<string[]> {
-  const code = selection === 'SEC' || selection === 'ECOLE' ? selection : null;
+  const code = selection && selection !== 'ALL' ? selection : null;
   const rows = await prisma.entity.findMany({
     where: { id: { in: accessibleEntityIds(user) }, ...(code ? { code } : {}) },
     select: { id: true },
   });
   return rows.map((r) => r.id);
+}
+
+/** Nom de l'organisation de l'utilisateur (la RLS ne laisse voir que la sienne). */
+export async function getOrganizationName(): Promise<string | null> {
+  return (await prisma.organization.findFirst({ select: { name: true } }))?.name ?? null;
 }

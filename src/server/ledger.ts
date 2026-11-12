@@ -165,7 +165,7 @@ export async function postTransaction(tx: Prisma.TransactionClient, input: PostT
   // 6. Écriture.
   const entity = await tx.entity.findUnique({ where: { id: input.entityId }, select: { code: true } });
   if (!entity) throw new AppError('ENTITY_NOT_FOUND', 404, 'Entité introuvable');
-  const reference = await nextReference(tx, entity.code, DOC_TYPE[kind], input.date);
+  const reference = await nextReference(tx, input.entityId, DOC_TYPE[kind], input.date);
 
   const created = await tx.financialTransaction.create({
     data: {

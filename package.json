@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:seed": "tsx prisma/seed.ts",
-    "db:seed:demo": "tsx --conditions=react-server prisma/seed-demo.ts --yes"
+    "db:seed:demo": "tsx --conditions=react-server prisma/seed-demo.ts --yes",
+    "db:setup-role": "tsx scripts/setup-app-role.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

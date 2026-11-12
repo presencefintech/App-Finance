@@ -79,7 +79,7 @@ export async function openAdvanceForExpense(
 
   const advanceId = randomUUID();
   const expenseId = randomUUID();
-  const reference = await nextReference(tx, lenderEntity.code, 'AV', p.date);
+  const reference = await nextReference(tx, p.lender.entityId, 'AV', p.date);
   const posted = await postTransaction(tx, {
     entityId: p.lender.entityId, kind: 'ADVANCE_DISBURSEMENT', date: p.date,
     description: `Avance ${lenderEntity.name} → ${borrower.name} — ${p.description}`.slice(0, 300),

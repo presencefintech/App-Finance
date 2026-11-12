@@ -150,8 +150,7 @@ export async function createFundRequest(actor: CurrentUser, input: CreateFundReq
       const dep = await tx.department.findFirst({ where: { id: input.departmentId, entityId: input.entityId } });
       if (!dep) throw new AppError('VALIDATION_ERROR', 400, 'Département inconnu pour cette entité');
     }
-    const entity = await tx.entity.findUniqueOrThrow({ where: { id: input.entityId }, select: { code: true } });
-    const reference = await nextReference(tx, entity.code, 'DF');
+    const reference = await nextReference(tx, input.entityId, 'DF');
     const created = await tx.fundRequest.create({
       data: {
         reference, entityId: input.entityId, requesterId: actor.id, departmentId: input.departmentId,

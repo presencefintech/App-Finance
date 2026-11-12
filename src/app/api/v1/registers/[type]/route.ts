@@ -9,15 +9,15 @@ import { renderPdf, renderXlsx } from '@/server/modules/reports/render';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** GET /registers/:type?entity=SEC|ECOLE&from&to&format=pdf|xlsx|json — un registre par entité. */
+/** GET /registers/:type?entity=<code>&from&to&format=pdf|xlsx|json — un registre par entité. */
 export const GET = handler(
   async ({ request, user, params }) => {
     const type = params.type as RegisterType;
     if (!REGISTER_TYPES.includes(type)) throw new AppError('NOT_FOUND', 404, 'Registre inconnu');
     const q = new URL(request.url).searchParams;
     const entity = q.get('entity');
-    if (entity !== 'SEC' && entity !== 'ECOLE') {
-      throw new AppError('VALIDATION_ERROR', 400, 'Choisissez une entité (SEC ou ECOLE) : un registre est propre à une entité');
+    if (!entity || entity === 'ALL') {
+      throw new AppError('VALIDATION_ERROR', 400, 'Choisissez une entité (code) : un registre est propre à une entité');
     }
     const [entityId] = await resolveEntityIds(user!, entity);
     if (!entityId) throw new AppError('NOT_FOUND', 404, 'Entité introuvable');

@@ -118,8 +118,7 @@ export async function initiateWithdrawal(
     if (!bank.allowOverdraft && (await getAccountBalance(tx, bank.id)).lessThan(amount)) {
       throw new AppError('INSUFFICIENT_FUNDS', 409, 'Solde bancaire insuffisant');
     }
-    const entity = await tx.entity.findUniqueOrThrow({ where: { id: bank.entityId }, select: { code: true } });
-    const reference = await nextReference(tx, entity.code, 'RETP');
+    const reference = await nextReference(tx, bank.entityId, 'RETP');
     const row = await tx.pendingTransfer.create({
       data: {
         reference, entityId: bank.entityId, bankAccountId: bank.id, cashAccountId: cash.id, amount: i.amount,

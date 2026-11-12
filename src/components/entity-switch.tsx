@@ -4,21 +4,18 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 
-const OPTIONS = [
-  { value: 'SEC', label: 'SEC' },
-  { value: 'ECOLE', label: 'École' },
-  { value: 'ALL', label: 'Consolidé' },
-] as const;
-
-export function EntitySwitch({ current }: { current: string }) {
+/** Sélecteur des entités DE L'ORGANISATION ; « Consolidé » n'apparaît que s'il y a plusieurs entités. */
+export function EntitySwitch({ current, entities }: { current: string; entities: { code: string; name: string }[] }) {
   const router = useRouter();
+  if (entities.length === 0) return <span />;
+  const options = [...entities.map((e) => ({ value: e.code, label: e.name })), ...(entities.length > 1 ? [{ value: 'ALL', label: 'Consolidé' }] : [])];
   async function select(selection: string) {
     await api('/preferences/entity', { method: 'POST', body: { selection } });
     router.refresh();
   }
   return (
     <div className="inline-flex rounded-lg border border-border p-0.5 text-sm">
-      {OPTIONS.map((o) => (
+      {options.map((o) => (
         <button
           key={o.value}
           onClick={() => select(o.value)}

@@ -77,8 +77,10 @@ export async function setAppSetting(actor: CurrentUser, key: string, value: stri
   if (!def.check(value)) throw new AppError('VALIDATION_ERROR', 400, 'Valeur invalide');
   requireStepUp(actor); // lever la séparation approbateur/caissier est sensible
   return prisma.$transaction(async (tx) => {
-    const before = await tx.setting.findUnique({ where: { key } });
-    await tx.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
+    // Un réglage par (organisation, clé) : la RLS borne la recherche à l'organisation courante.
+    const before = await tx.setting.findFirst({ where: { key } });
+    if (before) await tx.setting.update({ where: { id: before.id }, data: { value } });
+    else await tx.setting.create({ data: { key, value } });
     await writeAudit(tx, {
       actorId: actor.id, action: 'settings.update', entityType: 'Setting', entityId: key,
       before: { value: before?.value ?? def.default }, after: { value }, ip: meta.ip,

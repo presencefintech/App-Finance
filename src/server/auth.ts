@@ -3,7 +3,9 @@ import { createHash, randomBytes } from 'node:crypto';
 import { cookies } from 'next/headers';
 import argon2 from 'argon2';
 import type { Role } from '@/generated/prisma/enums';
-import { prisma } from './db';
+import { cache } from 'react';
+import { prisma, systemDb } from './db';
+import { bindRscTenant, runInOrg } from './tenant';
 import { AppError } from './errors';
 import { writeAudit } from './audit';
 import { decrypt } from './crypto';
@@ -22,6 +24,9 @@ export interface CurrentUser {
   fullName: string;
   sessionId: string;
   roles: { entityId: string; role: Role }[];
+  /** Organisation (client) de l'utilisateur ; null = administrateur de la plateforme. */
+  organizationId: string | null;
+  isPlatformAdmin: boolean;
   stepUpUntil: Date | null;
   totpEnabled: boolean;
   /** 2FA obligatoire pour ses rôles mais pas encore activée. */
@@ -55,19 +60,20 @@ export async function login(
   meta: RequestMeta,
 ): Promise<string> {
   const since = new Date(Date.now() - LOCK_WINDOW_MS);
-  const lastOk = await prisma.loginEvent.findFirst({
+  const sys = systemDb(); // authentification : aucune donnée métier, aucune organisation
+  const lastOk = await sys.loginEvent.findFirst({
     where: { email, success: true, at: { gte: since } },
     orderBy: { at: 'desc' },
     select: { at: true },
   });
-  const failures = await prisma.loginEvent.count({
+  const failures = await sys.loginEvent.count({
     where: { email, success: false, at: { gte: lastOk?.at ?? since } },
   });
   if (failures >= LOCK_AFTER) {
     throw new AppError('ACCOUNT_LOCKED', 429, 'Trop de tentatives. Réessayez dans 15 minutes.');
   }
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await sys.user.findUnique({ where: { email } });
   // Même coût de calcul si l'utilisateur n'existe pas (pas d'énumération par le temps de réponse).
   let ok = user?.isActive ? await verifyPassword(user.passwordHash, password) : false;
 
@@ -77,26 +83,29 @@ export async function login(
     ok = verifyCode(decrypt(user.totpSecretEnc), totpCode);
   }
 
-  await prisma.loginEvent.create({
+  await sys.loginEvent.create({
     data: { userId: user?.id ?? null, email, success: ok, ip: meta.ip, userAgent: meta.userAgent },
   });
   if (!user || !ok) throw new AppError('INVALID_CREDENTIALS', 401, 'E-mail ou mot de passe incorrect');
 
   const token = randomBytes(32).toString('hex');
   const now = new Date();
-  await prisma.$transaction(async (tx) => {
-    await tx.session.create({
-      data: {
-        id: hashToken(token),
-        userId: user.id,
-        lastSeenAt: now,
-        expiresAt: new Date(now.getTime() + MAX_MS),
-        ip: meta.ip,
-        userAgent: meta.userAgent,
-      },
-    });
-    await writeAudit(tx, { actorId: user.id, action: 'auth.login', entityType: 'User', entityId: user.id, ip: meta.ip });
+  await sys.session.create({
+    data: {
+      id: hashToken(token),
+      userId: user.id,
+      lastSeenAt: now,
+      expiresAt: new Date(now.getTime() + MAX_MS),
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    },
   });
+  // L'audit appartient à l'organisation de l'utilisateur (ou à la plateforme s'il n'en a pas).
+  await runInOrg(user.organizationId, () =>
+    prisma.$transaction((tx) =>
+      writeAudit(tx, { actorId: user.id, action: 'auth.login', entityType: 'User', entityId: user.id, ip: meta.ip }),
+    ),
+  );
   return token;
 }
 
@@ -115,12 +124,13 @@ export async function clearSessionCookie() {
 }
 
 /** Résout l'utilisateur courant depuis le cookie ; applique expirations et glissement d'inactivité. */
-export async function getCurrentUser(): Promise<CurrentUser | null> {
+export const getCurrentUser = cache(async function getCurrentUser(): Promise<CurrentUser | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
   const id = hashToken(token);
-  const session = await prisma.session.findUnique({
+  const sys = systemDb();
+  const session = await sys.session.findUnique({
     where: { id },
     include: { user: { include: { roles: true } } },
   });
@@ -129,34 +139,45 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   const now = Date.now();
   const expired = session.expiresAt.getTime() <= now || now - session.lastSeenAt.getTime() > IDLE_MS;
   if (expired || !session.user.isActive) {
-    await prisma.session.delete({ where: { id } }).catch(() => undefined);
+    await sys.session.delete({ where: { id } }).catch(() => undefined);
     return null;
   }
   // Évite une écriture à chaque requête : rafraîchit au plus une fois par minute.
   if (now - session.lastSeenAt.getTime() > 60_000) {
-    await prisma.session.update({ where: { id }, data: { lastSeenAt: new Date(now) } });
+    await sys.session.update({ where: { id }, data: { lastSeenAt: new Date(now) } });
   }
 
   const { user } = session;
   const roles = user.roles.map((r) => ({ entityId: r.entityId, role: r.role }));
   const totpEnabled = Boolean(user.totpEnabledAt);
+  // Une organisation désactivée par la plateforme n'a plus accès à rien.
+  if (user.organizationId) {
+    const org = await sys.organization.findUnique({ where: { id: user.organizationId }, select: { isActive: true } });
+    if (!org?.isActive) return null;
+  }
+  // Tout le rendu serveur de cette requête sera isolé sur l'organisation de l'utilisateur (RLS).
+  bindRscTenant(user.organizationId);
   return {
     id: user.id,
     email: user.email,
     fullName: user.fullName,
     sessionId: id,
     roles,
+    organizationId: user.organizationId,
+    isPlatformAdmin: user.isPlatformAdmin,
     stepUpUntil: session.stepUpUntil,
     totpEnabled,
     needsTotpSetup: !twoFactorDisabled() && isTotpRequired(roles) && !totpEnabled,
   };
-}
+});
 
 export async function logout(user: CurrentUser, meta: RequestMeta) {
-  await prisma.$transaction(async (tx) => {
-    await tx.session.deleteMany({ where: { id: user.sessionId } });
-    await writeAudit(tx, { actorId: user.id, action: 'auth.logout', entityType: 'User', entityId: user.id, ip: meta.ip });
-  });
+  await systemDb().session.deleteMany({ where: { id: user.sessionId } });
+  await runInOrg(user.organizationId, () =>
+    prisma.$transaction((tx) =>
+      writeAudit(tx, { actorId: user.id, action: 'auth.logout', entityType: 'User', entityId: user.id, ip: meta.ip }),
+    ),
+  );
   await clearSessionCookie();
 }
 
@@ -170,7 +191,7 @@ export interface SessionInfo {
 
 /** Sessions actives de l'utilisateur. L'id exposé est un préfixe du hash (suffisant pour révoquer, inutilisable comme token). */
 export async function listSessions(user: CurrentUser): Promise<SessionInfo[]> {
-  const rows = await prisma.session.findMany({
+  const rows = await systemDb().session.findMany({
     where: { userId: user.id, expiresAt: { gt: new Date() } },
     orderBy: { lastSeenAt: 'desc' },
   });
@@ -185,11 +206,11 @@ export async function listSessions(user: CurrentUser): Promise<SessionInfo[]> {
 
 export async function revokeSession(user: CurrentUser, shortId: string, meta: RequestMeta) {
   if (!/^[0-9a-f]{16}$/.test(shortId)) throw new AppError('NOT_FOUND', 404, 'Session introuvable');
-  await prisma.$transaction(async (tx) => {
-    const { count } = await tx.session.deleteMany({
-      where: { userId: user.id, id: { startsWith: shortId } },
-    });
-    if (count === 0) throw new AppError('NOT_FOUND', 404, 'Session introuvable');
-    await writeAudit(tx, { actorId: user.id, action: 'auth.session.revoke', entityType: 'User', entityId: user.id, ip: meta.ip });
+  const { count } = await systemDb().session.deleteMany({
+    where: { userId: user.id, id: { startsWith: shortId } },
   });
+  if (count === 0) throw new AppError('NOT_FOUND', 404, 'Session introuvable');
+  await prisma.$transaction((tx) =>
+    writeAudit(tx, { actorId: user.id, action: 'auth.session.revoke', entityType: 'User', entityId: user.id, ip: meta.ip }),
+  );
 }
