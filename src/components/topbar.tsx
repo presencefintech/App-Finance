@@ -1,21 +1,23 @@
-import { Bell, UserRound } from 'lucide-react';
+import Link from 'next/link';
+import { Bell } from 'lucide-react';
+import { EntitySwitch } from './entity-switch';
+import { LogoutButton } from './logout-button';
 
-export function Topbar() {
+export function Topbar({ userName, selection, unread }: { userName: string; selection: string; unread: number }) {
   return (
     <header className="flex h-14 items-center justify-between border-b border-border bg-card px-6">
-      <div className="inline-flex rounded-lg border border-border p-0.5 text-sm">
-        {['SEC', 'École', 'Consolidé'].map((label, i) => (
-          <button
-            key={label}
-            className={i === 2 ? 'rounded-md bg-primary px-3 py-1 font-medium text-white' : 'rounded-md px-3 py-1 text-muted'}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <div className="flex items-center gap-4 text-muted">
-        <Bell className="size-5" />
-        <UserRound className="size-5" />
+      <EntitySwitch current={selection} />
+      <div className="flex items-center gap-4 text-sm text-muted">
+        <Link href="/notifications" className="relative" title="Notifications">
+          <Bell className="size-5" />
+          {unread > 0 && (
+            <span className="absolute -right-2 -top-2 flex size-4 items-center justify-center rounded-full bg-danger text-[10px] font-semibold text-white">
+              {unread > 9 ? '9+' : unread}
+            </span>
+          )}
+        </Link>
+        <span>{userName}</span>
+        <LogoutButton />
       </div>
     </header>
   );

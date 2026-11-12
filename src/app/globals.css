@@ -13,6 +13,20 @@
   --primary-soft: #a9dcc3;
   --danger: #dc3b3b;
   --warning: #e8a317;
+
+  /* Graphiques — palette validée (scripts/validate_palette.js, surface #fff) : ordre fixe, jamais cyclé. */
+  --series-1: #0e9f6e; /* vert plateforme : recettes, entrées */
+  --series-2: #eb6834; /* orange : dépenses, sorties */
+  --series-3: #2a78d6;
+  --series-4: #eda100;
+  --series-5: #6250d6;
+  --series-6: #e87ba4;
+  --series-other: #898781;
+  --chart-grid: #e1e0d9;
+  --chart-axis: #c3c2b7;
+  --chart-text: #52514e;
+  --chart-muted: #898781;
+  --chart-track: #d3efe3; /* piste claire du vert pour les jauges */
 }
 
 @theme inline {

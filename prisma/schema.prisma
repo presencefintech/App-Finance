@@ -27,20 +27,24 @@ enum Role {
 }
 
 model Entity {
-  id    String          @id @default(cuid())
-  code  EntityCode      @unique
-  name  String
-  roles UserEntityRole[]
+  id       String           @id @default(cuid())
+  code     EntityCode       @unique
+  name     String
+  roles    UserEntityRole[]
+  accounts Account[]
 }
 
 model User {
-  id           String           @id @default(cuid())
-  email        String           @unique
-  fullName     String
-  passwordHash String
-  isActive     Boolean          @default(true)
-  roles        UserEntityRole[]
-  createdAt    DateTime         @default(now())
+  id            String           @id @default(cuid())
+  email         String           @unique
+  fullName      String
+  passwordHash  String
+  isActive      Boolean          @default(true)
+  totpSecretEnc String?
+  totpEnabledAt DateTime?
+  roles         UserEntityRole[]
+  sessions      Session[]
+  createdAt     DateTime         @default(now())
 }
 
 model UserEntityRole {
@@ -51,4 +55,548 @@ model UserEntityRole {
   entity   Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
 
   @@id([userId, entityId, role])
+}
+
+model Session {
+  id          String    @id // sha256 du token aléatoire
+  userId      String
+  expiresAt   DateTime
+  lastSeenAt  DateTime
+  ip          String?
+  userAgent   String?
+  stepUpUntil DateTime?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model LoginEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  email     String
+  success   Boolean
+  ip        String?
+  userAgent String?
+  at        DateTime @default(now())
+
+  @@index([email, at])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  ip         String?
+  at         DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
+
+enum AccountType {
+  CASH
+  BANK
+}
+
+enum TxKind {
+  OPENING_BALANCE
+  INCOME
+  EXPENSE
+  CASH_TO_BANK
+  BANK_TO_CASH
+  BANK_TO_BANK
+  CASH_TO_CASH
+  BANK_FEE
+  ADVANCE_DISBURSEMENT
+  ADVANCE_REPAYMENT
+  CASH_ADJUSTMENT
+  REVERSAL
+}
+
+enum TxStatus {
+  POSTED
+  REVERSED
+}
+
+// Caisse OU compte bancaire : une seule devise par compte.
+model Account {
+  id                 String        @id @default(cuid())
+  entityId           String
+  type               AccountType
+  name               String
+  currency           Currency
+  bankName           String?
+  holderName         String?
+  accountNumberEnc   String? // AES-256-GCM, affiché masqué
+  accountNumberLast4 String?
+  allowOverdraft     Boolean       @default(false) // §13.5 : découvert refusé par défaut
+  isActive           Boolean       @default(true)
+  openedAt           DateTime
+  createdAt          DateTime      @default(now())
+  entity             Entity        @relation(fields: [entityId], references: [id])
+  entries            LedgerEntry[]
+
+  @@index([entityId, type])
+}
+
+// Une opération métier = 1 transaction comptable = N écritures.
+model FinancialTransaction {
+  id             String        @id @default(cuid())
+  reference      String        @unique
+  entityId       String // entité qui porte l'opération (pour une avance : celle qui décaisse)
+  kind           TxKind
+  date           DateTime
+  description    String
+  status         TxStatus      @default(POSTED)
+  reversalOfId   String?       @unique // renseigné sur la contre-passation : id de l'originale
+  reversalReason String?
+  createdById    String
+  createdAt      DateTime      @default(now())
+  // Liens métier (modules des phases suivantes)
+  fundRequestId  String?
+  incomeId       String?
+  expenseId      String?
+  advanceId      String?
+  entries        LedgerEntry[]
+  fx             FxConversion?
+
+  @@index([entityId, date])
+  @@index([kind])
+}
+
+model LedgerEntry {
+  id        String               @id @default(cuid())
+  txId      String
+  accountId String
+  amount    Decimal              @db.Decimal(18, 2) // signé : + entrée, − sortie, devise du compte
+  currency  Currency
+  createdAt DateTime             @default(now())
+  tx        FinancialTransaction @relation(fields: [txId], references: [id])
+  account   Account              @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, createdAt])
+  @@index([txId])
+}
+
+model FxConversion {
+  id           String               @id @default(cuid())
+  txId         String               @unique
+  fromAmount   Decimal              @db.Decimal(18, 2)
+  fromCurrency Currency
+  toAmount     Decimal              @db.Decimal(18, 2)
+  toCurrency   Currency
+  rate         Decimal              @db.Decimal(18, 6) // 1 fromCurrency = rate toCurrency
+  rateDate     DateTime
+  rateSource   String
+  tx           FinancialTransaction @relation(fields: [txId], references: [id])
+}
+
+model ExchangeRate {
+  id          String   @id @default(cuid())
+  date        DateTime
+  base        Currency
+  quote       Currency
+  rate        Decimal  @db.Decimal(18, 6)
+  source      String
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@unique([date, base, quote, source])
+}
+
+model ReferenceCounter {
+  entityCode EntityCode
+  docType    String
+  year       Int
+  lastValue  Int
+
+  @@id([entityCode, docType, year])
+}
+
+model IdempotencyKey {
+  id             String   @id @default(cuid())
+  userId         String
+  key            String
+  method         String
+  path           String
+  responseStatus Int?
+  responseBody   String?
+  createdAt      DateTime @default(now())
+
+  @@unique([userId, key])
+}
+
+enum FundRequestStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  ESCALATED
+  APPROVED
+  REJECTED
+  DISBURSED
+  RECEIVED
+  JUSTIFIED
+  CLOSED
+  CANCELLED
+}
+
+enum ApprovalLevel {
+  CONTROLLER
+  DIRECTOR
+}
+
+enum CategoryKind {
+  INCOME
+  EXPENSE
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHEQUE
+  MOBILE_MONEY
+  OTHER
+}
+
+enum AttachmentKind {
+  RECEIPT
+  INVOICE
+  SIGNED_REGISTER
+  BANK_STATEMENT
+  OTHER
+}
+
+model Department {
+  id       String @id @default(cuid())
+  entityId String
+  name     String
+
+  @@unique([entityId, name])
+}
+
+model Category {
+  id       String       @id @default(cuid())
+  entityId String
+  kind     CategoryKind
+  name     String
+  isActive Boolean      @default(true)
+
+  @@unique([entityId, kind, name])
+}
+
+model Income {
+  id            String        @id @default(cuid())
+  reference     String        @unique
+  entityId      String
+  date          DateTime
+  source        String
+  categoryId    String
+  amount        Decimal       @db.Decimal(18, 2)
+  currency      Currency
+  paymentMethod PaymentMethod
+  accountId     String
+  note          String?
+  createdById   String
+  createdAt     DateTime      @default(now())
+
+  @@index([entityId, date])
+}
+
+model Expense {
+  id            String        @id @default(cuid())
+  reference     String        @unique
+  entityId      String
+  date          DateTime
+  categoryId    String
+  departmentId  String?
+  beneficiary   String
+  purpose       String
+  amount        Decimal       @db.Decimal(18, 2)
+  currency      Currency
+  paymentMethod PaymentMethod
+  accountId     String
+  fundRequestId String?
+  createdById   String
+  createdAt     DateTime      @default(now())
+
+  @@index([entityId, date])
+}
+
+model FundRequest {
+  id                     String             @id @default(cuid())
+  reference              String             @unique
+  entityId               String // entité bénéficiaire de la dépense
+  requesterId            String
+  departmentId           String?
+  amount                 Decimal            @db.Decimal(18, 2)
+  currency               Currency
+  purpose                String
+  status                 FundRequestStatus  @default(DRAFT)
+  submittedAt            DateTime?
+  approvalLevel          ApprovalLevel?
+  approvedById           String?
+  approvedAt             DateTime?
+  disbursedFromAccountId String?
+  disbursedById          String?
+  disbursedAt            DateTime?
+  receivedAt             DateTime?
+  closedById             String?
+  closedAt               DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  events                 FundRequestEvent[]
+  attachments            Attachment[]
+
+  @@index([entityId, status])
+  @@index([requesterId])
+}
+
+model FundRequestEvent {
+  id            String             @id @default(cuid())
+  fundRequestId String
+  fromStatus    FundRequestStatus?
+  toStatus      FundRequestStatus
+  actorId       String
+  comment       String?
+  at            DateTime           @default(now())
+  fundRequest   FundRequest        @relation(fields: [fundRequestId], references: [id])
+
+  @@index([fundRequestId])
+}
+
+model ApprovalLimit {
+  id        String   @id @default(cuid())
+  entityId  String
+  role      Role
+  currency  Currency
+  maxAmount Decimal  @db.Decimal(18, 2)
+
+  @@unique([entityId, role, currency])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model Attachment {
+  id            String         @id @default(cuid())
+  storageKey    String
+  fileName      String
+  mimeType      String
+  size          Int
+  sha256        String
+  kind          AttachmentKind
+  data          Bytes? // stockage en base si aucun bucket S3 n'est configuré
+  uploadedById  String
+  uploadedAt    DateTime       @default(now())
+  entityId      String
+  txId          String?
+  fundRequestId String?
+  expenseId     String?
+  incomeId      String?
+  fundRequest   FundRequest?   @relation(fields: [fundRequestId], references: [id])
+
+  @@index([fundRequestId])
+  @@index([txId])
+}
+
+enum PendingTransferStatus {
+  IN_TRANSIT
+  CONFIRMED
+  CANCELLED
+}
+
+enum CashSessionStatus {
+  PENDING_VALIDATION
+  CLOSED
+}
+
+// Retrait bancaire en deux temps : "en transit" (aucune écriture) puis confirmation de réception.
+model PendingTransfer {
+  id              String                @id @default(cuid())
+  reference       String                @unique
+  entityId        String
+  bankAccountId   String
+  cashAccountId   String
+  amount          Decimal               @db.Decimal(18, 2)
+  currency        Currency
+  description     String
+  status          PendingTransferStatus @default(IN_TRANSIT)
+  initiatedById   String
+  initiatedAt     DateTime              @default(now())
+  confirmedById   String?
+  confirmedAt     DateTime?
+  cancelledReason String?
+  txId            String?
+
+  @@index([entityId, status])
+}
+
+// Clôture journalière de caisse.
+model CashSession {
+  id                 String            @id @default(cuid())
+  accountId          String
+  date               DateTime          @db.Date // jour local (Africa/Lubumbashi)
+  theoreticalBalance Decimal           @db.Decimal(18, 2)
+  countedBalance     Decimal           @db.Decimal(18, 2)
+  difference         Decimal           @db.Decimal(18, 2)
+  justification      String?
+  denominations      Json?
+  status             CashSessionStatus
+  closedById         String
+  closedAt           DateTime          @default(now())
+  validatedById      String?
+  validatedAt        DateTime?
+  adjustmentTxId     String?
+
+  @@unique([accountId, date])
+}
+
+enum AdvanceStatus {
+  OPEN
+  PARTIALLY_REPAID
+  REPAID
+  CANCELLED
+}
+
+// Avance inter-entités : créance pour le prêteur, dette pour l'emprunteur (jamais une recette ni une dépense commerciale).
+model InterEntityAdvance {
+  id               String             @id @default(cuid())
+  reference        String             @unique
+  lenderEntityId   String
+  borrowerEntityId String
+  amount           Decimal            @db.Decimal(18, 2)
+  currency         Currency
+  date             DateTime
+  fundRequestId    String?
+  description      String
+  status           AdvanceStatus      @default(OPEN)
+  createdById      String
+  createdAt        DateTime           @default(now())
+  repayments       AdvanceRepayment[]
+
+  @@index([lenderEntityId, status])
+  @@index([borrowerEntityId, status])
+}
+
+model AdvanceRepayment {
+  id        String             @id @default(cuid())
+  advanceId String
+  txId      String             @unique
+  amount    Decimal            @db.Decimal(18, 2) // dans la devise de l'avance
+  currency  Currency
+  date      DateTime
+  advance   InterEntityAdvance @relation(fields: [advanceId], references: [id])
+
+  @@index([advanceId])
+}
+
+model Budget {
+  id          String       @id @default(cuid())
+  entityId    String
+  name        String
+  periodStart DateTime
+  periodEnd   DateTime
+  currency    Currency
+  createdById String
+  createdAt   DateTime     @default(now())
+  lines       BudgetLine[]
+
+  @@index([entityId])
+}
+
+model BudgetLine {
+  id           String  @id @default(cuid())
+  budgetId     String
+  departmentId String?
+  categoryId   String?
+  amount       Decimal @db.Decimal(18, 2)
+  budget       Budget  @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+
+  @@index([budgetId])
+}
+
+enum ReconStatus {
+  IN_PROGRESS
+  SUBMITTED
+  VALIDATED
+}
+
+enum MatchStatus {
+  UNMATCHED
+  SUGGESTED
+  MATCHED
+  IGNORED
+  CREATED
+}
+
+model BankStatement {
+  id             String              @id @default(cuid())
+  accountId      String
+  entityId       String
+  periodStart    DateTime
+  periodEnd      DateTime
+  openingBalance Decimal             @db.Decimal(18, 2)
+  closingBalance Decimal             @db.Decimal(18, 2)
+  fileName       String
+  sha256         String
+  fileData       Bytes?
+  storageKey     String?
+  status         ReconStatus         @default(IN_PROGRESS)
+  importedById   String
+  importedAt     DateTime            @default(now())
+  submittedById  String?
+  submittedAt    DateTime?
+  validatedById  String?
+  validatedAt    DateTime?
+  validationNote String?
+  lines          BankStatementLine[]
+
+  @@index([accountId])
+}
+
+model BankStatementLine {
+  id              String        @id @default(cuid())
+  statementId     String
+  position        Int
+  date            DateTime
+  label           String
+  reference       String?
+  amount          Decimal       @db.Decimal(18, 2) // signé du point de vue du compte : + crédit, − débit
+  matchStatus     MatchStatus   @default(UNMATCHED)
+  matchedEntryId  String?
+  matchConfidence Int?
+  candidateIds    Json? // écritures candidates proposées (jamais confirmées automatiquement)
+  duplicateOfId   String?
+  confirmedById   String?
+  confirmedAt     DateTime?
+  note            String?
+  statement       BankStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+
+  @@index([statementId])
+  @@index([matchedEntryId])
+}
+
+// Mapping de colonnes mémorisé par compte bancaire.
+model BankColumnMapping {
+  accountId String   @id
+  mapping   Json
+  updatedAt DateTime @updatedAt
 }
