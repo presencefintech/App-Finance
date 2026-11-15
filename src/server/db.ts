@@ -70,8 +70,17 @@ export function clientForOrg(orgId: string | null): PrismaClient {
 
 export const systemDb = (): PrismaClient => clientForOrg(null);
 
+/**
+ * Connexion de la plateforme : rôle dédié `sec_platform` (PLATFORM_DATABASE_URL), à droits limités aux tables de
+ * gestion des organisations. À défaut, le rôle propriétaire (déploiement qui exécute les migrations).
+ */
+const platformUrl = (): string | undefined => process.env.PLATFORM_DATABASE_URL ?? process.env.MIGRATION_DATABASE_URL;
+export const hasPlatformDb = (): boolean => Boolean(platformUrl());
+
 export function platformDb(): PrismaClient {
-  g.__sfcPlatform ??= make(process.env.MIGRATION_DATABASE_URL ?? appUrl(), null, 2);
+  const url = platformUrl();
+  if (!url) throw new Error('PLATFORM_DB_UNAVAILABLE');
+  g.__sfcPlatform ??= make(url, null, 2);
   return g.__sfcPlatform;
 }
 

@@ -6,8 +6,8 @@ export const dynamic = 'force-dynamic';
 
 export const GET = handler(
   async ({ user }) => {
-    const { id, email, fullName, roles, totpEnabled, needsTotpSetup } = user!;
-    return NextResponse.json({ id, email, fullName, roles, totpEnabled, needsTotpSetup });
+    const { id, email, fullName, roles, totpEnabled, needsTotpSetup, organizationId, isPlatformAdmin } = user!;
+    return NextResponse.json({ id, email, fullName, roles, totpEnabled, needsTotpSetup, organizationId, isPlatformAdmin });
   },
   { allowPending2fa: true },
 );

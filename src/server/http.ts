@@ -4,6 +4,7 @@ import { ZodError } from 'zod';
 import { roleHasPermission, type Permission } from '@/lib/permissions';
 import { getCurrentUser, requestMeta, type CurrentUser, type RequestMeta } from './auth';
 import { prisma } from './db';
+import { collectEmails } from './email';
 import { runInOrg } from './tenant';
 import { AppError } from './errors';
 
@@ -108,7 +109,7 @@ export function handler(
       }
 
       // Tout le traitement s'exécute dans le contexte de l'organisation : la base ne montre que ses lignes (RLS).
-      return await runInOrg(user?.organizationId ?? null, async () => {
+      return await collectEmails(() => runInOrg(user?.organizationId ?? null, async () => {
         if (idempotent && user) {
           const reserved = await reserveIdempotencyKey(user, request);
           if ('replay' in reserved) return reserved.replay;
@@ -125,7 +126,7 @@ export function handler(
           });
         }
         return response;
-      });
+      }));
     } catch (err) {
       // Échec : la clé est libérée pour permettre de réessayer après correction.
       if (reservation) await prisma.idempotencyKey.delete({ where: { id: reservation } }).catch(() => undefined);

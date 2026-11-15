@@ -24,6 +24,9 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number];
 
+/** Rôles pouvant gérer les accès et les paramètres de l'organisation (ADMIN et DIRECTOR). */
+export const MANAGER_ROLES: readonly Role[] = ['ADMIN', 'DIRECTOR'];
+
 /** Matrice rôle → permissions (SPEC §3). ADMIN n'enregistre aucune opération financière. */
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ADMIN: ['user.manage', 'settings.manage', 'account.manage', 'account.read', 'audit.read', 'report.read'],
@@ -32,7 +35,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'audit.read', 'report.read', 'fundRequest.review', 'fundRequest.approve', 'fundRequest.close',
     'transaction.record', 'transaction.reverse', 'cash.close', 'cash.validate', 'advance.manage', 'budget.manage', 'reconciliation.manage',
   ],
-  DIRECTOR: ['account.read', 'budget.manage', 'audit.read', 'report.read', 'fundRequest.approve', 'transaction.reverse'],
+  DIRECTOR: ['user.manage', 'settings.manage', 'account.read', 'budget.manage', 'audit.read', 'report.read', 'fundRequest.approve', 'transaction.reverse'],
   CASHIER: ['account.read', 'fundRequest.disburse', 'transaction.record', 'cash.close'],
   REQUESTER: ['fundRequest.create'],
   VIEWER: ['account.read', 'report.read'],

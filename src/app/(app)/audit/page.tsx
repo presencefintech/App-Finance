@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { MANAGER_ROLES } from '@/lib/permissions';
 import { Forbidden } from '@/components/forbidden';
 import { canAccessPath } from '@/lib/navigation';
 import { Card, CardTitle } from '@/components/ui/card';
@@ -26,7 +27,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
   const activity = activityByDay(logs.map((l) => l.at), 14);
   return (
     <>
-      {user.roles.some((r) => r.role === 'ADMIN') && <SettingsNav current="/audit" />}
+      {user.roles.some((r) => MANAGER_ROLES.includes(r.role)) && <SettingsNav current="/audit" />}
       <ChartCard className="mb-6" title="Activité des 14 derniers jours" subtitle="Nombre d’actions tracées par jour" legend={[{ name: 'Actions', color: 'var(--series-3)' }]}
         table={{ columns: ['Jour', 'Actions'], rows: activity.map((a) => [a.label, a.count]) }}>
         <BarChart label="Actions tracées par jour" categories={activity.map((a) => a.label)} height={160} series={[{ name: 'Actions', color: 'var(--series-3)', values: activity.map((a) => a.count) }]} />

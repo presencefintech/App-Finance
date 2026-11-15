@@ -39,7 +39,7 @@ const ADMIN_ONLY = ['User', 'Setting', 'ApprovalLimit', 'Category', 'Department'
 export async function listAuditLogs(actor: CurrentUser, f: AuditFilter = {}) {
   const canRead = actor.roles.some((r) => ['ADMIN', 'CONTROLLER', 'DIRECTOR'].includes(r.role));
   if (!canRead) throw new AppError('FORBIDDEN', 403, 'Accès au journal d’audit refusé');
-  const isAdmin = actor.roles.some((r) => r.role === 'ADMIN');
+  const isAdmin = actor.roles.some((r) => r.role === 'ADMIN' || r.role === 'DIRECTOR');
   const mine = new Set(accessibleEntityIds(actor));
 
   const where: Prisma.AuditLogWhereInput = {

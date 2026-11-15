@@ -4,6 +4,7 @@ import { writeAudit } from '@/server/audit';
 import type { CurrentUser, RequestMeta } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { AppError } from '@/server/errors';
+import { MANAGER_ROLES } from '@/lib/permissions';
 import { D, toMoneyString } from '@/server/money';
 import { accessibleEntityIds, assertCan, assertEntityAccess } from '@/server/permissions';
 import { approvalLimit } from '@/server/settings';
@@ -56,8 +57,8 @@ export async function setApprovalLimit(
 }
 
 function assertAdminSomewhere(actor: CurrentUser) {
-  const entityId = actor.roles.find((r) => r.role === 'ADMIN')?.entityId;
-  if (!entityId) throw new AppError('FORBIDDEN', 403, 'Réservé aux administrateurs');
+  const entityId = actor.roles.find((r) => MANAGER_ROLES.includes(r.role))?.entityId;
+  if (!entityId) throw new AppError('FORBIDDEN', 403, 'Réservé aux administrateurs et directeurs');
   assertCan(actor, 'settings.manage', entityId);
   if (!accessibleEntityIds(actor).includes(entityId)) throw new AppError('FORBIDDEN', 403, 'Réservé aux administrateurs');
 }

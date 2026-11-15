@@ -29,10 +29,10 @@ describe('menu par rôle (matrice de visibilité)', () => {
     expect(m).not.toContain('/parametres');
   });
 
-  it('DIRECTOR : décision et supervision, sans rapprochement ni paramètres', () => {
+  it('DIRECTOR : décision, supervision et gestion des accès (paramètres), sans rapprochement', () => {
     const m = menu('DIRECTOR');
-    expect(m).toEqual(expect.arrayContaining(['/', '/demandes', '/rapports', '/audit']));
-    for (const forbidden of ['/rapprochements', '/parametres']) expect(m).not.toContain(forbidden);
+    expect(m).toEqual(expect.arrayContaining(['/', '/demandes', '/rapports', '/audit', '/parametres']));
+    expect(m).not.toContain('/rapprochements');
   });
 
   it('ADMIN : accès, paramètres et audit, mais pas les demandes de fonds ni le rapprochement', () => {

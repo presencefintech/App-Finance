@@ -22,6 +22,23 @@ async function main() {
     const { rows } = await client.query("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'sec_app'");
     if (rows[0]?.rolsuper || rows[0]?.rolbypassrls) throw new Error('sec_app ne doit ni être superutilisateur ni contourner la RLS');
     console.log('Rôle applicatif sec_app prêt (sans privilège spécial, soumis à la RLS).');
+
+    // Rôle de la PLATEFORME (création/suspension d'organisations) : contourne la RLS mais n'a de droits que sur les
+    // quelques tables de gestion des organisations — aucune table financière, aucun DDL, jamais superutilisateur.
+    const platformPassword = process.env.PLATFORM_DB_PASSWORD;
+    if (platformPassword) {
+      if (platformPassword.length < 16) throw new Error('PLATFORM_DB_PASSWORD : 16 caractères minimum');
+      await client.query("DO $body$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sec_platform') THEN CREATE ROLE sec_platform NOLOGIN; END IF; END $body$");
+      await client.query(`ALTER ROLE sec_platform WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS PASSWORD ${client.escapeLiteral(platformPassword)}`);
+      await client.query('GRANT USAGE ON SCHEMA public TO sec_platform');
+      const grants: Record<string, string> = {
+        Organization: 'SELECT, INSERT, UPDATE', Entity: 'SELECT, INSERT', User: 'SELECT, INSERT', UserEntityRole: 'SELECT, INSERT',
+        Category: 'SELECT, INSERT', AuditLog: 'INSERT', Session: 'SELECT, DELETE',
+      };
+      await client.query(`REVOKE ALL ON ALL TABLES IN SCHEMA public FROM sec_platform`);
+      for (const [table, privileges] of Object.entries(grants)) await client.query(`GRANT ${privileges} ON "${table}" TO sec_platform`);
+      console.log('Rôle de plateforme sec_platform prêt (droits limités à la gestion des organisations).');
+    }
   } finally {
     await client.end();
   }

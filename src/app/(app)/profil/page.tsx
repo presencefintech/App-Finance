@@ -1,5 +1,6 @@
 import { Card, CardTitle } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { PasswordForm } from '@/components/password-form';
 import { SessionsList } from '@/components/sessions-list';
 import { TotpSetup } from '@/components/totp-setup';
 import { getCurrentUser } from '@/server/auth';
@@ -25,6 +26,7 @@ export default async function ProfilPage() {
         </dl>
       </Card>
       {!user.totpEnabled && <TotpSetup required={false} />}
+      <PasswordForm />
       <Card>
         <CardTitle>Sessions actives</CardTitle>
         <SessionsList />

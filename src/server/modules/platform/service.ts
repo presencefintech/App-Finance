@@ -2,8 +2,9 @@ import 'server-only';
 import { Prisma } from '@/generated/prisma/client';
 import type { CreateOrganizationInput } from '@/lib/schemas/platform';
 import { hashPassword, type CurrentUser, type RequestMeta } from '@/server/auth';
-import { platformDb } from '@/server/db';
+import { hasPlatformDb, platformDb as ownerDb } from '@/server/db';
 import { AppError } from '@/server/errors';
+import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from '@/server/modules/entities/defaults';
 
 /**
  * Administration de la PLATEFORME : création et suspension des organisations clientes.
@@ -14,9 +15,20 @@ function assertPlatform(actor: CurrentUser) {
   if (!actor.isPlatformAdmin) throw new AppError('FORBIDDEN', 403, 'Réservé à l’administration de la plateforme');
 }
 
-/** Catégories par défaut de toute nouvelle organisation (modifiables par son administrateur). */
-const DEFAULT_INCOME = ['Frais et prestations', 'Partenaires', 'Autres recettes'];
-const DEFAULT_EXPENSE = ['Fournitures', 'Salaires', 'Transport', 'Maintenance', 'Frais bancaires', 'Demandes de fonds', 'Autres dépenses'];
+/** Les identifiants propriétaires ne sont volontairement pas présents sur tous les déploiements. */
+export function platformAdminAvailable(): boolean {
+  return hasPlatformDb();
+}
+
+function platformDb() {
+  if (!hasPlatformDb()) {
+    throw new AppError('PLATFORM_ADMIN_UNAVAILABLE', 503, 'La gestion des organisations n’est pas activée sur ce déploiement (PLATFORM_DATABASE_URL absente). Utilisez l’application où elle est activée.');
+  }
+  return ownerDb();
+}
+
+const DEFAULT_INCOME = DEFAULT_INCOME_CATEGORIES;
+const DEFAULT_EXPENSE = DEFAULT_EXPENSE_CATEGORIES;
 
 export async function listOrganizations(actor: CurrentUser) {
   assertPlatform(actor);

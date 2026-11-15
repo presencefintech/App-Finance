@@ -204,6 +204,26 @@ export async function listSessions(user: CurrentUser): Promise<SessionInfo[]> {
   }));
 }
 
+/**
+ * Changement de mot de passe par l'utilisateur lui-même : exige le mot de passe actuel, refuse de réutiliser le même,
+ * et déconnecte tous les AUTRES appareils (la session courante reste ouverte).
+ */
+export async function changePassword(user: CurrentUser, currentPassword: string, newPassword: string, meta: RequestMeta) {
+  const row = await prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { passwordHash: true } });
+  if (!(await verifyPassword(row.passwordHash, currentPassword))) {
+    // Compté comme un échec de connexion : on ne peut pas deviner le mot de passe depuis une session volée.
+    await systemDb().loginEvent.create({ data: { userId: user.id, email: user.email, success: false, ip: meta.ip, userAgent: meta.userAgent } });
+    throw new AppError('INVALID_CREDENTIALS', 400, 'Le mot de passe actuel est incorrect');
+  }
+  if (currentPassword === newPassword) throw new AppError('VALIDATION_ERROR', 400, 'Le nouveau mot de passe doit être différent de l’actuel');
+  const passwordHash = await hashPassword(newPassword);
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: user.id }, data: { passwordHash } });
+    await writeAudit(tx, { actorId: user.id, action: 'auth.password.change', entityType: 'User', entityId: user.id, ip: meta.ip });
+  });
+  await systemDb().session.deleteMany({ where: { userId: user.id, NOT: { id: user.sessionId } } });
+}
+
 export async function revokeSession(user: CurrentUser, shortId: string, meta: RequestMeta) {
   if (!/^[0-9a-f]{16}$/.test(shortId)) throw new AppError('NOT_FOUND', 404, 'Session introuvable');
   const { count } = await systemDb().session.deleteMany({

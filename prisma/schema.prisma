@@ -39,6 +39,8 @@ model Entity {
   roles          UserEntityRole[]
   accounts       Account[]
 
+  @@unique([organizationId, code])
+  @@unique([organizationId, prefix])
   @@index([organizationId])
 }
 
@@ -55,6 +57,7 @@ model User {
   totpEnabledAt   DateTime?
   roles           UserEntityRole[]
   sessions        Session[]
+  resetTokens     PasswordResetToken[]
   createdAt       DateTime         @default(now())
 }
 
@@ -81,6 +84,18 @@ model Session {
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// Jeton de réinitialisation de mot de passe (à usage unique, 1 h). Seul le hash SHA-256 est stocké.
+model PasswordResetToken {
+  id        String    @id // sha256 du jeton envoyé par e-mail
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model LoginEvent {

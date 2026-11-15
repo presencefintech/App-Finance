@@ -43,6 +43,7 @@ beforeAll(async () => {
   await person('secController', [{ entityId: SEC, role: 'CONTROLLER' }]);
   await person('ecoleController', [{ entityId: ECOLE, role: 'CONTROLLER' }]);
   await person('cashier', [{ entityId: SEC, role: 'CASHIER' }]);
+  await person('director', [{ entityId: SEC, role: 'DIRECTOR' }]);
 });
 
 afterAll(async () => {
@@ -75,6 +76,62 @@ describe('gestion des utilisateurs (ADMIN) et audit', () => {
     expect(row.passwordHash).not.toContain('motdepasse');
     expect(await authMod.verifyPassword(row.passwordHash, 'motdepasse-solide-2')).toBe(true);
     expect(await authMod.verifyPassword(row.passwordHash, 'mauvais')).toBe(false);
+  });
+
+  it('un DIRECTEUR gère les accès, mais ni le rôle ADMIN, ni un administrateur, ni ses propres rôles', async () => {
+    const input = { email: 'dir-made@t.local', fullName: 'Dir Made', password: 'motdepasse-solide-2', roles: [{ entityId: SEC, role: 'CASHIER' as const }] };
+    const created = await users.createUser(A.director!, input, META);
+    await users.setUserRoles(A.director!, created.id, [{ entityId: SEC, role: 'VIEWER' }], META);
+    await expect(users.setUserRoles(A.director!, created.id, [{ entityId: SEC, role: 'ADMIN' }], META)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(users.createUser(A.director!, { ...input, email: 'adm2@t.local', roles: [{ entityId: SEC, role: 'ADMIN' }] }, META)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(users.setUserRoles(A.director!, A.director!.id, [{ entityId: SEC, role: 'CASHIER' }], META)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(users.updateUser(A.director!, A.admin!.id, { isActive: false }, META)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
+  it('changement de mot de passe : ancien requis, nouveau haché, audit écrit', async () => {
+    const hash = await authMod.hashPassword('ancien-mot-de-passe-1');
+    const u = await prisma.user.create({ data: { email: 'pw@t.local', fullName: 'Pw', passwordHash: hash } });
+    const actor = makeActor(u.id, []);
+    await expect(authMod.changePassword(actor, 'mauvais', 'nouveau-mot-de-passe-2', META)).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+    await expect(authMod.changePassword(actor, 'ancien-mot-de-passe-1', 'ancien-mot-de-passe-1', META)).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await authMod.changePassword(actor, 'ancien-mot-de-passe-1', 'nouveau-mot-de-passe-2', META);
+    const row = await prisma.user.findUniqueOrThrow({ where: { id: u.id } });
+    expect(await authMod.verifyPassword(row.passwordHash, 'nouveau-mot-de-passe-2')).toBe(true);
+    expect(await authMod.verifyPassword(row.passwordHash, 'ancien-mot-de-passe-1')).toBe(false);
+    expect(await prisma.auditLog.count({ where: { actorId: u.id, action: 'auth.password.change' } })).toBe(1);
+  });
+
+  it('mot de passe oublié : jeton à usage unique, expirable, sessions coupées, pas d’énumération', async () => {
+    const reset = await import('../src/server/password-reset');
+    const { createHash } = await import('node:crypto');
+    const u = await prisma.user.create({ data: { email: 'forgot@t.local', fullName: 'F', passwordHash: await authMod.hashPassword('ancien-mot-de-passe-1') } });
+    await expect(reset.requestPasswordReset('inconnu@t.local')).resolves.toBeUndefined();
+    await reset.requestPasswordReset('forgot@t.local');
+    expect(await prisma.passwordResetToken.count({ where: { userId: u.id } })).toBe(1);
+
+    const token = 'a'.repeat(64);
+    const id = createHash('sha256').update(token).digest('hex');
+    await prisma.passwordResetToken.create({ data: { id, userId: u.id, expiresAt: new Date(Date.now() + 60_000) } });
+    await prisma.session.create({ data: { id: 'sess-forgot', userId: u.id, lastSeenAt: new Date(), expiresAt: new Date(Date.now() + 60_000) } });
+    await reset.resetPassword(token, 'tout-nouveau-mot-de-passe-3', META);
+    const row = await prisma.user.findUniqueOrThrow({ where: { id: u.id } });
+    expect(await authMod.verifyPassword(row.passwordHash, 'tout-nouveau-mot-de-passe-3')).toBe(true);
+    expect(await prisma.session.count({ where: { userId: u.id } })).toBe(0);
+    await expect(reset.resetPassword(token, 'encore-un-autre-mot-de-passe', META)).rejects.toMatchObject({ code: 'INVALID_TOKEN' });
+
+    const expired = 'b'.repeat(64);
+    await prisma.passwordResetToken.create({ data: { id: createHash('sha256').update(expired).digest('hex'), userId: u.id, expiresAt: new Date(Date.now() - 1000) } });
+    await expect(reset.resetPassword(expired, 'encore-un-autre-mot-de-passe', META)).rejects.toMatchObject({ code: 'INVALID_TOKEN' });
+  });
+
+  it('création d’une entité : réservée aux ADMIN, catégories par défaut, rôle ADMIN pour le créateur, code unique', async () => {
+    const entities = await import('../src/server/modules/entities/service');
+    const input = { name: 'Filiale Nord', code: 'NORD', prefix: 'NRD' };
+    await expect(entities.createEntity(A.director!, input, META)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    const e = await entities.createEntity(A.admin!, input, META);
+    expect(await prisma.category.count({ where: { entityId: e.id } })).toBeGreaterThan(5);
+    expect(await prisma.userEntityRole.count({ where: { userId: A.admin!.id, entityId: e.id, role: 'ADMIN' } })).toBe(1);
+    await expect(entities.createEntity(A.admin!, input, META)).rejects.toMatchObject({ code: 'ALREADY_EXISTS' });
   });
 
   it('garde-fous : pas d’auto-désactivation ni d’auto-rétrogradation ; désactiver coupe les sessions', async () => {
