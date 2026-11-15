@@ -14,7 +14,8 @@ function s3(): S3Client {
   client ??= new S3Client({
     endpoint: process.env.S3_ENDPOINT,
     region: process.env.S3_REGION ?? 'auto',
-    forcePathStyle: true,
+    // S3_URL_STYLE=virtual-host pour les buckets Railway ; « path » (défaut) pour MinIO / autres.
+    forcePathStyle: (process.env.S3_URL_STYLE ?? 'path') === 'path',
     credentials: { accessKeyId: process.env.S3_ACCESS_KEY!, secretAccessKey: process.env.S3_SECRET_KEY! },
   });
   return client;
@@ -27,6 +28,13 @@ export async function putObject(key: string, body: Buffer, contentType: string):
   if (!s3Configured()) return { data: body };
   await s3().send(new PutObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key, Body: body, ContentType: contentType }));
   return { data: null };
+}
+
+/** Lit un objet du bucket (le serveur relaie le fichier après contrôle des droits : le bucket n'est jamais exposé). */
+export async function getObject(key: string): Promise<Buffer> {
+  const res = await s3().send(new GetObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }));
+  if (!res.Body) throw new Error('Objet vide');
+  return Buffer.from(await res.Body.transformToByteArray());
 }
 
 /** URL signée de courte durée (60 s) — uniquement en mode S3. */

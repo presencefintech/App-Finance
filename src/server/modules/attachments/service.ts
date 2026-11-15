@@ -6,7 +6,7 @@ import type { CurrentUser, RequestMeta } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { AppError } from '@/server/errors';
 import { accessibleEntityIds, assertCan } from '@/server/permissions';
-import { putObject, signedUrl, storageMode } from '@/server/storage';
+import { getObject, putObject } from '@/server/storage';
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 Mo (SPEC §2.3)
 const ALLOWED = ['image/jpeg', 'image/png', 'application/pdf'] as const;
@@ -93,19 +93,26 @@ async function loadForRead(actor: CurrentUser, id: string) {
   return att;
 }
 
-/** URL de téléchargement : signée (60 s) en mode S3, sinon route authentifiée du serveur. */
+/**
+ * URL de téléchargement : toujours la route authentifiée du serveur, que le fichier soit en base ou dans le bucket.
+ * Les droits sont ainsi contrôlés à chaque accès, et l'aperçu (image/PDF) reste conforme à la politique de contenu.
+ */
 export async function getAttachmentUrl(actor: CurrentUser, id: string, meta: RequestMeta) {
-  const att = await loadForRead(actor, id);
+  await loadForRead(actor, id);
   await prisma.$transaction((tx) =>
     writeAudit(tx, { actorId: actor.id, action: 'attachment.download', entityType: 'Attachment', entityId: id, ip: meta.ip }),
   );
-  return { url: storageMode() === 's3' ? await signedUrl(att.storageKey, att.fileName) : `/api/v1/attachments/${id}/file` };
+  return { url: `/api/v1/attachments/${id}/file` };
 }
 
 export async function readAttachmentFile(actor: CurrentUser, id: string) {
   const att = await loadForRead(actor, id);
-  if (!att.data) throw new AppError('NOT_FOUND', 404, 'Fichier stocké dans le bucket : utilisez l’URL signée');
-  return { bytes: Buffer.from(att.data), mimeType: att.mimeType, fileName: att.fileName };
+  // Fichier en base (staging / anciens fichiers) ou dans le bucket S3 (clé = storageKey).
+  const bytes = att.data ? Buffer.from(att.data) : await getObject(att.storageKey);
+  if (createHash('sha256').update(bytes).digest('hex') !== att.sha256) {
+    throw new AppError('INTEGRITY_ERROR', 500, 'Le fichier est altéré (empreinte différente) : contactez l’administrateur');
+  }
+  return { bytes, mimeType: att.mimeType, fileName: att.fileName };
 }
 
 /** Pièces rattachées à une opération (scans de documents signés, justificatifs). Même isolation d'entité que la lecture. */

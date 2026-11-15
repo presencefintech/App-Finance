@@ -12,7 +12,8 @@
     "test": "vitest run",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:demo": "tsx --conditions=react-server prisma/seed-demo.ts --yes",
-    "db:setup-role": "tsx scripts/setup-app-role.ts"
+    "db:setup-role": "tsx scripts/setup-app-role.ts",
+    "db:attachments-to-s3": "tsx --conditions=react-server scripts/migrate-attachments-to-s3.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
