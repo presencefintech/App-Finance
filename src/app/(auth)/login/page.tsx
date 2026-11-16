@@ -82,7 +82,7 @@ export default function LoginPage() {
 
         <div className="relative flex items-center gap-3">
           <BrandMark className="h-11 w-11 text-lg" />
-          <span className="text-xl font-bold">Finance <span className="font-light text-emerald-300">Control</span></span>
+          <span className="text-xl font-bold">Fin<span className="font-light text-emerald-300">trax</span></span>
         </div>
 
         <div className="relative max-w-lg">
@@ -112,7 +112,7 @@ export default function LoginPage() {
         <div className="relative w-full max-w-sm">
           <div className="mb-6 text-center lg:hidden">
             <BrandMark className="mx-auto mb-3 h-12 w-12 text-xl" />
-            <h1 className="text-2xl font-bold text-white">Finance <span className="font-light text-emerald-300">Control</span></h1>
+            <h1 className="text-2xl font-bold text-white">Fin<span className="font-light text-emerald-300">trax</span></h1>
             <p className="mt-1 text-sm text-white/60">Trésorerie, contrôle bancaire et reporting</p>
           </div>
 

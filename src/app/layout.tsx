@@ -11,10 +11,10 @@ const description = 'Trésorerie, contrôle bancaire et reporting pour SEC SARL 
 // fichiers de src/app. metadataBase rend leurs adresses absolues, ce que WhatsApp, Facebook ou Slack exigent.
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.SITE_URL ?? 'https://www.fintrax.site'),
-  title: 'SEC Finance Control',
+  title: 'Fintrax',
   description,
-  openGraph: { title: 'SEC Finance Control', description, siteName: 'SEC Finance Control', locale: 'fr_FR', type: 'website' },
-  twitter: { card: 'summary_large_image', title: 'SEC Finance Control', description },
+  openGraph: { title: 'Fintrax', description, siteName: 'Fintrax', locale: 'fr_FR', type: 'website' },
+  twitter: { card: 'summary_large_image', title: 'Fintrax', description },
 };
 
 export const viewport: Viewport = { themeColor: '#0e9f6e' };

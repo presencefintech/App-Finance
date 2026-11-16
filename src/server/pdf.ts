@@ -21,7 +21,7 @@ export function pdfSafe(text: string): string {
 export const moneyPlain = (value: string, currency: 'USD' | 'CDF') => pdfSafe(formatMoney(value, currency));
 
 export function newPdf(): Doc {
-  return new PDFDocument({ size: 'A4', margin: MARGIN, bufferPages: true, info: { Producer: 'SEC Finance Control' } });
+  return new PDFDocument({ size: 'A4', margin: MARGIN, bufferPages: true, info: { Producer: 'Fintrax' } });
 }
 
 export function toBuffer(doc: Doc): Promise<Buffer> {
@@ -35,7 +35,7 @@ export function toBuffer(doc: Doc): Promise<Buffer> {
 }
 
 export function drawHeader(doc: Doc, h: { entityName?: string; title: string; number?: string; subtitle?: string }) {
-  doc.fillColor(GREEN).font('Helvetica-Bold').fontSize(16).text(pdfSafe(h.entityName ?? 'SEC Finance Control'));
+  doc.fillColor(GREEN).font('Helvetica-Bold').fontSize(16).text(pdfSafe(h.entityName ?? 'Fintrax'));
   doc.moveDown(0.3).fillColor('#14221e').fontSize(14).text(pdfSafe(h.title));
   const meta = [h.number ? `N° ${h.number}` : null, h.subtitle].filter(Boolean).join('  ·  ');
   if (meta) doc.moveDown(0.2).fillColor(MUTED).font('Helvetica').fontSize(10).text(pdfSafe(meta));

@@ -67,7 +67,7 @@ function fillSheet(ws: ExcelJS.Worksheet, s: Section) {
 /** Excel : une feuille par section, montants en cellules numériques (format #,##0.00), devise en colonne. */
 export async function renderXlsx(d: TabularDoc): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'SEC Finance Control';
+  wb.creator = 'Fintrax';
   wb.created = d.generatedAt;
   const used = new Set<string>();
   const cover = wb.addWorksheet(sheetName('Résumé', used));

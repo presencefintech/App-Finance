@@ -25,7 +25,7 @@ export function Sidebar({ items }: { items: SidebarItem[] }) {
   return (
     <aside className="hidden w-60 shrink-0 flex-col bg-sidebar p-4 text-sidebar-foreground md:flex">
       <div className="mb-6 px-2 text-lg font-bold text-white">
-        SEC <span className="font-light text-primary-soft">Finance</span>
+        Fin<span className="font-light text-primary-soft">trax</span>
       </div>
       <nav className="flex flex-col gap-1">
         {items.map(({ href, label, icon }) => {

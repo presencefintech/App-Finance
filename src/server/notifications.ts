@@ -22,7 +22,7 @@ export async function notifyUsers(db: Db, userIds: string[], input: NotifyInput)
   const base = process.env.APP_URL?.split(/[\s,;]+/).filter(Boolean).at(-1)?.replace(/\/$/, '') ?? '';
   const link = input.href ? `\n\nOuvrir : ${base}${input.href}` : '';
   for (const u of users) {
-    queueEmail({ to: u.email, subject: `Finance Control — ${input.title}`, text: `${input.title}\n\n${input.body}${link}` });
+    queueEmail({ to: u.email, subject: `Fintrax — ${input.title}`, text: `${input.title}\n\n${input.body}${link}` });
   }
 }
 

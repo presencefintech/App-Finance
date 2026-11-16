@@ -29,7 +29,7 @@ export async function requestPasswordReset(email: string): Promise<void> {
   const base = process.env.APP_URL?.split(/[\s,;]+/).filter(Boolean).at(-1)?.replace(/\/$/, '') ?? '';
   sendEmail({
     to: user.email,
-    subject: 'Finance Control — Réinitialisation de votre mot de passe',
+    subject: 'Fintrax — Réinitialisation de votre mot de passe',
     text:
       `Une réinitialisation de mot de passe a été demandée pour votre compte.\n\n` +
       `Ouvrez ce lien (valable 1 heure, à usage unique) :\n${base}/reinitialiser-mot-de-passe?token=${token}\n\n` +

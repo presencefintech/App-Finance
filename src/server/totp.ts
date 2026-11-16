@@ -8,7 +8,7 @@ import { AppError } from './errors';
 import type { CurrentUser, RequestMeta } from './auth';
 import { twoFactorDisabled } from '@/lib/totp-policy';
 
-const ISSUER = 'SEC Finance Control';
+const ISSUER = 'Fintrax';
 const STEP_UP_MS = 5 * 60 * 1000;
 
 export function verifyCode(secret: string, code: string): boolean {

@@ -1,6 +1,6 @@
-# CLAUDE.md — SEC Finance Control
+# CLAUDE.md — Fintrax
 
-Tu travailles sur **SEC Finance Control** : une plateforme de gestion financière, de trésorerie, de contrôle bancaire et de reporting pour **deux entités indépendantes** — **SEC SARL** et **l'École** (Kolwezi, RDC).
+Tu travailles sur **Fintrax** (anciennement « SEC Finance Control ») : une plateforme de gestion financière, de trésorerie, de contrôle bancaire et de reporting pour **deux entités indépendantes** — **SEC SARL** et **l'École** (Kolwezi, RDC).
 
 La spécification fonctionnelle et technique complète est dans **`docs/SPEC.md`**. Lis la section concernée avant chaque tâche. Ce fichier-ci contient les règles qui s'appliquent tout le temps.
 

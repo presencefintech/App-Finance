@@ -6,7 +6,7 @@ import { after } from 'next/server';
  * Envoi d'e-mails via Resend (API HTTP, aucune dépendance). Sans RESEND_API_KEY, l'envoi est désactivé :
  * l'application fonctionne normalement avec ses seules notifications internes.
  *
- * Variables : RESEND_API_KEY, EMAIL_FROM (ex. « Finance Control <noreply@votre-domaine.com> », domaine vérifié chez Resend).
+ * Variables : RESEND_API_KEY, EMAIL_FROM (ex. « Fintrax <noreply@votre-domaine.com> », domaine vérifié chez Resend).
  */
 export interface Mail {
   to: string;
@@ -24,7 +24,7 @@ async function deliver(mail: Mail): Promise<void> {
       method: 'POST',
       headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: process.env.EMAIL_FROM ?? 'Finance Control <onboarding@resend.dev>',
+        from: process.env.EMAIL_FROM ?? 'Fintrax <onboarding@resend.dev>',
         to: [mail.to],
         subject: mail.subject,
         text: mail.text,
