@@ -4,6 +4,7 @@ import { canAccessPath } from '@/lib/navigation';
 import { notFound, redirect } from 'next/navigation';
 import { Card, CardTitle } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { Paperclip } from 'lucide-react';
 import { AccountActions } from '@/components/account-actions';
 import { Money } from '@/components/money';
 import { ChartCard } from '@/components/charts/chart-card';
@@ -18,6 +19,7 @@ import { getCurrentUser } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { AppError } from '@/server/errors';
 import { getAccount, getLedger, listAccounts } from '@/server/modules/accounts/service';
+import { evidenceCountsByTxId } from '@/server/modules/attachments/service';
 import { listCashSessions } from '@/server/modules/cash/service';
 import { listCategories } from '@/server/modules/referentials/service';
 import { listWithdrawals } from '@/server/modules/transfers/service';
@@ -39,6 +41,7 @@ export async function AccountDetail({ id }: { id: string }) {
     select: { id: true, reference: true },
   });
   const idByRef = new Map(txIds.map((t) => [t.reference, t.id]));
+  const evidence = await evidenceCountsByTxId(user, account.entityId, txIds.map((t) => t.id));
   const canReverse = can(user.roles, 'transaction.reverse', account.entityId);
   const canRecord = can(user.roles, 'transaction.record', account.entityId);
   const canClose = can(user.roles, 'cash.close', account.entityId);
@@ -117,6 +120,7 @@ export async function AccountDetail({ id }: { id: string }) {
       )}
 
       <AccountActions
+        entityId={account.entityId}
         account={{ id: account.id, name: account.name, type: account.type, currency: account.currency }}
         others={siblings.filter((a) => a.id !== id && a.isActive).map((a) => ({ id: a.id, name: a.name, type: a.type, currency: a.currency }))}
         categories={categories.filter((c) => c.isActive).map((c) => ({ id: c.id, name: c.name, kind: c.kind }))}
@@ -142,6 +146,12 @@ export async function AccountDetail({ id }: { id: string }) {
                   </td>
                   <td className="text-right"><Money value={r.amount} currency={account.currency} /></td>
                   <td className="pl-3 text-right whitespace-nowrap">
+                    {(evidence.get(idByRef.get(r.reference) ?? '') ?? 0) > 0 && (
+                      <span className="mr-3 inline-flex items-center gap-1 text-xs text-primary" title="Justificatif joint">
+                        <Paperclip className="size-3.5" aria-hidden /> {evidence.get(idByRef.get(r.reference)!)}
+                        <span className="sr-only"> justificatif(s)</span>
+                      </span>
+                    )}
                     {idByRef.get(r.reference) && <Link href={`/operations/${idByRef.get(r.reference)}`} className="mr-3 text-xs text-primary hover:underline">Document</Link>}
                     {canReverse && r.status === 'POSTED' && r.kind !== 'REVERSAL' && idByRef.get(r.reference) && (
                       <ReverseButton txId={idByRef.get(r.reference)!} />

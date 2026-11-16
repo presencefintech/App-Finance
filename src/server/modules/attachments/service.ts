@@ -19,10 +19,19 @@ function sniff(buf: Buffer): (typeof ALLOWED)[number] | null {
   return null;
 }
 
-export type AttachmentTarget = { type: 'fundRequest'; id: string } | { type: 'transaction'; id: string };
+/** `draft` : justificatif déposé avant l'opération, rattaché à l'entité en attendant d'être lié (voir evidence.ts). */
+export type AttachmentTarget =
+  | { type: 'fundRequest'; id: string }
+  | { type: 'transaction'; id: string }
+  | { type: 'draft'; entityId: string };
 
 /** Résout la cible, applique l'isolation d'entité et vérifie le droit de déposer. */
 async function resolveTarget(actor: CurrentUser, target: AttachmentTarget, forUpload: boolean) {
+  if (target.type === 'draft') {
+    if (!accessibleEntityIds(actor).includes(target.entityId)) throw new AppError('NOT_FOUND', 404, 'Introuvable');
+    assertCan(actor, 'transaction.record', target.entityId);
+    return { entityId: target.entityId, fundRequestId: null as string | null, txId: null as string | null };
+  }
   if (target.type === 'fundRequest') {
     const req = await prisma.fundRequest.findUnique({ where: { id: target.id } });
     if (!req || !accessibleEntityIds(actor).includes(req.entityId)) throw new AppError('NOT_FOUND', 404, 'Introuvable');
@@ -85,6 +94,13 @@ export async function uploadAttachment(
 async function loadForRead(actor: CurrentUser, id: string) {
   const att = await prisma.attachment.findUnique({ where: { id } });
   if (!att) throw new AppError('NOT_FOUND', 404, 'Introuvable');
+  if (!att.txId && !att.fundRequestId) {
+    // Pièce en attente (pas encore liée à une opération) : visible uniquement par celui qui l'a déposée.
+    if (att.uploadedById !== actor.id || !accessibleEntityIds(actor).includes(att.entityId)) {
+      throw new AppError('NOT_FOUND', 404, 'Introuvable');
+    }
+    return att;
+  }
   await resolveTarget(
     actor,
     att.fundRequestId ? { type: 'fundRequest', id: att.fundRequestId } : { type: 'transaction', id: att.txId ?? '' },
@@ -122,4 +138,24 @@ export async function listForTransaction(actor: CurrentUser, txId: string) {
     where: { txId }, orderBy: { uploadedAt: 'asc' },
     select: { id: true, fileName: true, mimeType: true, size: true, kind: true, uploadedAt: true, sha256: true },
   });
+}
+
+/** Types de pièces qui comptent comme « justificatif » (les scans de documents signés et les relevés n'en sont pas). */
+export const EVIDENCE_KINDS: AttachmentKind[] = ['INVOICE', 'RECEIPT', 'OTHER'];
+
+/** Nombre de justificatifs par opération, en une seule requête (listes). Entité inaccessible ⇒ aucun résultat. */
+export async function evidenceCountsByTxId(actor: CurrentUser, entityId: string, txIds: string[]): Promise<Map<string, number>> {
+  if (txIds.length === 0 || !accessibleEntityIds(actor).includes(entityId)) return new Map();
+  const rows = await prisma.attachment.groupBy({
+    by: ['txId'], where: { entityId, txId: { in: txIds }, kind: { in: EVIDENCE_KINDS } }, _count: { _all: true },
+  });
+  return new Map(rows.flatMap((r) => (r.txId ? [[r.txId, r._count._all] as const] : [])));
+}
+
+/** Même chose, indexé par référence d'opération (les listes de recettes et de dépenses n'exposent pas l'identifiant du grand livre). */
+export async function evidenceCountsByReference(actor: CurrentUser, entityId: string, references: string[]): Promise<Map<string, number>> {
+  if (references.length === 0 || !accessibleEntityIds(actor).includes(entityId)) return new Map();
+  const txs = await prisma.financialTransaction.findMany({ where: { entityId, reference: { in: references } }, select: { id: true, reference: true } });
+  const counts = await evidenceCountsByTxId(actor, entityId, txs.map((t) => t.id));
+  return new Map(txs.map((t) => [t.reference, counts.get(t.id) ?? 0]));
 }

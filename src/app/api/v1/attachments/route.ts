@@ -8,7 +8,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const fieldsSchema = z.object({
-  targetType: z.enum(['fundRequest', 'transaction']),
+  /** `draft` : justificatif déposé avant l'opération ; `targetId` est alors l'identifiant de l'entité. */
+  targetType: z.enum(['fundRequest', 'transaction', 'draft']),
   targetId: z.string().min(1),
   kind: z.enum(['RECEIPT', 'INVOICE', 'SIGNED_REGISTER', 'BANK_STATEMENT', 'OTHER']).default('RECEIPT'),
 });
@@ -26,7 +27,8 @@ export const POST = handler(
     const created = await uploadAttachment(
       user!,
       {
-        target: { type: fields.targetType, id: fields.targetId }, kind: fields.kind,
+        target: fields.targetType === 'draft' ? { type: 'draft', entityId: fields.targetId } : { type: fields.targetType, id: fields.targetId },
+        kind: fields.kind,
         fileName: file.name, declaredType: file.type, bytes: Buffer.from(await file.arrayBuffer()),
       },
       meta,

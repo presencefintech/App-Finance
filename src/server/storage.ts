@@ -1,5 +1,5 @@
 import 'server-only';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 /**
@@ -35,6 +35,12 @@ export async function getObject(key: string): Promise<Buffer> {
   const res = await s3().send(new GetObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }));
   if (!res.Body) throw new Error('Objet vide');
   return Buffer.from(await res.Body.transformToByteArray());
+}
+
+/** Supprime un objet du bucket (sans effet en mode base : le fichier part avec sa ligne). */
+export async function deleteObject(key: string): Promise<void> {
+  if (!s3Configured()) return;
+  await s3().send(new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }));
 }
 
 /** URL signée de courte durée (60 s) — uniquement en mode S3. */

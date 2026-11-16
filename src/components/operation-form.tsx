@@ -6,10 +6,12 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Button, ErrorText, Field, inputClass } from '@/components/ui/form';
+import { AttachmentUploader, type UploadedAttachment } from '@/components/attachment-uploader';
 import { MoneyInput } from '@/components/money';
 import { formatMoney } from '@/lib/money';
 
 interface Account { id: string; name: string; type: 'CASH' | 'BANK'; currency: 'USD' | 'CDF'; balance: string }
+interface Threshold { currency: 'USD' | 'CDF'; minAmount: string | null }
 interface Category { id: string; name: string; kind: 'INCOME' | 'EXPENSE'; isActive: boolean }
 const METHODS = [
   ['CASH', 'Espèces'], ['BANK_TRANSFER', 'Virement'], ['CHEQUE', 'Chèque'], ['MOBILE_MONEY', 'Mobile money'], ['OTHER', 'Autre'],
@@ -21,11 +23,18 @@ export function OperationForm({ kind, entities }: { kind: 'income' | 'expense'; 
   const [entityId, setEntityId] = useState(entities[0]?.id ?? '');
   const [form, setForm] = useState({ accountId: '', categoryId: '', party: '', detail: '', amount: '', paymentMethod: 'CASH' });
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const [files, setFiles] = useState<UploadedAttachment[]>([]);
 
   const accounts = useQuery({ queryKey: ['accounts', entityId], queryFn: () => api<{ data: Account[] }>(`/accounts?entityId=${entityId}`) });
   const categories = useQuery({ queryKey: ['categories', entityId], queryFn: () => api<{ data: Category[] }>(`/categories?entityId=${entityId}`) });
+  const thresholds = useQuery({ queryKey: ['evidence-thresholds', entityId], queryFn: () => api<{ data: Threshold[] }>(`/evidence-thresholds?entityId=${entityId}`) });
   const account = accounts.data?.data.find((a) => a.id === form.accountId);
   const cats = categories.data?.data.filter((c) => c.isActive && c.kind === (kind === 'income' ? 'INCOME' : 'EXPENSE')) ?? [];
+
+  // Comparaison décimale sans number JS : on aligne les parties entières puis on compare les chaînes.
+  const dec = (v: string) => { const [i = '0', f = ''] = v.split('.'); return `${i.padStart(18, '0')}.${f.padEnd(2, '0')}`; };
+  const minAmount = thresholds.data?.data.find((t) => t.currency === account?.currency)?.minAmount ?? null;
+  const evidenceRequired = Boolean(minAmount && form.amount && dec(form.amount) >= dec(minAmount));
 
   const save = useMutation({
     mutationFn: () =>
@@ -33,11 +42,11 @@ export function OperationForm({ kind, entities }: { kind: 'income' | 'expense'; 
         method: 'POST',
         body: {
           entityId, accountId: form.accountId, categoryId: form.categoryId, amount: form.amount,
-          currency: account?.currency, paymentMethod: form.paymentMethod,
+          currency: account?.currency, paymentMethod: form.paymentMethod, attachmentIds: files.map((f) => f.id),
           ...(kind === 'income' ? { source: form.party, note: form.detail || undefined } : { beneficiary: form.party, purpose: form.detail }),
         },
       }),
-    onSuccess: () => { setForm((f) => ({ ...f, party: '', detail: '', amount: '' })); router.refresh(); },
+    onSuccess: () => { setForm((f) => ({ ...f, party: '', detail: '', amount: '' })); setFiles([]); router.refresh(); },
   });
 
   return (
@@ -46,7 +55,7 @@ export function OperationForm({ kind, entities }: { kind: 'income' | 'expense'; 
       <form onSubmit={(e) => { e.preventDefault(); save.mutate(); }} className="grid max-w-3xl gap-x-4 sm:grid-cols-2">
         {entities.length > 1 && (
           <Field label="Entité">
-            <select className={inputClass} value={entityId} onChange={(e) => { setEntityId(e.target.value); setForm((f) => ({ ...f, accountId: '', categoryId: '' })); }}>
+            <select className={inputClass} value={entityId} onChange={(e) => { setEntityId(e.target.value); setFiles([]); setForm((f) => ({ ...f, accountId: '', categoryId: '' })); }}>
               {entities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
           </Field>
@@ -81,8 +90,28 @@ export function OperationForm({ kind, entities }: { kind: 'income' | 'expense'; 
           <Field label={kind === 'income' ? 'Note (optionnel)' : 'Motif'}>
             <input required={kind === 'expense'} className={inputClass} value={form.detail} onChange={(e) => set('detail', e.target.value)} />
           </Field>
+          <div className="mb-3">
+            <p className="mb-1 text-sm font-medium">
+              Justificatif {evidenceRequired ? <span className="text-danger">(obligatoire à partir de {formatMoney(minAmount!, account!.currency)})</span> : <span className="text-muted">(facultatif{minAmount && account ? ` — obligatoire à partir de ${formatMoney(minAmount, account.currency)}` : ''})</span>}
+            </p>
+            <ul className="mb-2 text-sm">
+              {files.map((f) => (
+                <li key={f.id} className="flex items-center gap-2">
+                  <span>{f.fileName}</span>
+                  <button type="button" className="text-xs text-muted underline" onClick={() => setFiles((l) => l.filter((x) => x.id !== f.id))}>Retirer</button>
+                </li>
+              ))}
+            </ul>
+            {files.length < 5 && (
+              <AttachmentUploader
+                targetType="draft" targetId={entityId} kind={kind === 'income' ? 'RECEIPT' : 'INVOICE'}
+                label={files.length ? 'Ajouter un autre justificatif' : 'Joindre une facture / un justificatif (photo ou PDF)'}
+                onUploaded={(a) => setFiles((l) => [...l, a])}
+              />
+            )}
+          </div>
           <ErrorText>{save.error?.message}</ErrorText>
-          <Button type="submit" disabled={save.isPending || !account}>Enregistrer</Button>
+          <Button type="submit" disabled={save.isPending || !account || (evidenceRequired && files.length === 0)}>Enregistrer</Button>
         </div>
       </form>
     </Card>

@@ -21,10 +21,17 @@ async function compressImage(file: File): Promise<File> {
   return blob && blob.size < file.size ? new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }) : file;
 }
 
+export interface UploadedAttachment { id: string; fileName: string }
+
+/**
+ * `draft` : justificatif déposé avant l'opération (`targetId` = identifiant de l'entité) ; le fichier est renvoyé par
+ * `onUploaded` pour être joint à l'opération à la création. Les autres cibles rafraîchissent la page.
+ */
 export function AttachmentUploader({
-  targetType, targetId, kind = 'RECEIPT',
+  targetType, targetId, kind = 'RECEIPT', label, onUploaded,
 }: {
-  targetType: 'fundRequest' | 'transaction'; targetId: string; kind?: string;
+  targetType: 'fundRequest' | 'transaction' | 'draft'; targetId: string; kind?: string; label?: string;
+  onUploaded?: (attachment: UploadedAttachment) => void;
 }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
@@ -42,19 +49,25 @@ export function AttachmentUploader({
       const res = await fetch('/api/v1/attachments', {
         method: 'POST', body: form, headers: { 'Idempotency-Key': crypto.randomUUID() },
       });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
+      const body = (await res.json().catch(() => null)) as
+        | (UploadedAttachment & { error?: { code?: string; message?: string } }) | null;
+      if (!res.ok || !body?.id) {
         throw new ApiError(body?.error?.code ?? 'UNKNOWN', body?.error?.message ?? 'Échec du dépôt', res.status);
       }
+      return body;
     },
-    onSuccess: () => { if (input.current) input.current.value = ''; router.refresh(); },
+    onSuccess: (created) => {
+      if (input.current) input.current.value = '';
+      onUploaded?.({ id: created.id, fileName: created.fileName });
+      if (targetType !== 'draft') router.refresh();
+    },
   });
 
   return (
     <div>
-      {/* capture="environment" : ouvre directement l'appareil photo arrière sur mobile */}
+      {/* capture="environment" : ouvre directement l'appareil photo arrière sur mobile (sauf brouillon : une facture est souvent un PDF) */}
       <input
-        ref={input} type="file" accept="image/jpeg,image/png,application/pdf" capture="environment" hidden
+        ref={input} type="file" accept="image/jpeg,image/png,application/pdf" capture={targetType === 'draft' ? undefined : 'environment'} hidden
         onChange={(e) => {
           const f = e.target.files?.[0];
           setLocalError(null);
@@ -62,8 +75,8 @@ export function AttachmentUploader({
         }}
       />
       <ErrorText>{localError ?? upload.error?.message}</ErrorText>
-      <Button variant="ghost" onClick={() => input.current?.click()} disabled={upload.isPending}>
-        {upload.isPending ? 'Envoi…' : 'Ajouter un justificatif (photo / PDF)'}
+      <Button type="button" variant="ghost" onClick={() => input.current?.click()} disabled={upload.isPending}>
+        {upload.isPending ? 'Envoi…' : (label ?? 'Ajouter un justificatif (photo / PDF)')}
       </Button>
     </div>
   );

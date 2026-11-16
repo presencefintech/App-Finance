@@ -6,12 +6,14 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Button, ErrorText, Field, inputClass } from '@/components/ui/form';
+import { AttachmentUploader, type UploadedAttachment } from '@/components/attachment-uploader';
 import { MoneyInput } from '@/components/money';
 
 type Currency = 'USD' | 'CDF';
 export interface AccountOption { id: string; name: string; type: 'CASH' | 'BANK'; currency: Currency }
 export interface CategoryOption { id: string; name: string; kind: 'INCOME' | 'EXPENSE' }
 interface Props {
+  entityId: string;
   account: AccountOption;
   others: AccountOption[];
   categories: CategoryOption[];
@@ -33,7 +35,7 @@ const MODES: Record<'CASH' | 'BANK', { id: Mode; label: string }[]> = {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export function AccountActions({ account, others, categories, canRecord, canClose }: Props) {
+export function AccountActions({ entityId, account, others, categories, canRecord, canClose }: Props) {
   const router = useRouter();
   const modes = MODES[account.type].filter((m) => (m.id === 'close' ? canClose : canRecord));
   const [mode, setMode] = useState<Mode | null>(null);
@@ -42,6 +44,7 @@ export function AccountActions({ account, others, categories, canRecord, canClos
     rate: '', rateSource: 'BCC', rateDate: today(),
   });
   const set = (k: keyof typeof f, v: string) => setF((s) => ({ ...s, [k]: v }));
+  const [files, setFiles] = useState<UploadedAttachment[]>([]);
 
   const target = others.find((o) => o.id === f.target);
   const needsFx = Boolean(target && target.currency !== account.currency && mode && mode !== 'withdrawal');
@@ -65,7 +68,7 @@ export function AccountActions({ account, others, categories, canRecord, canClos
       const amount = f.amount;
       switch (mode) {
         case 'movement':
-          return api(`/cash/${account.id}/movements`, { method: 'POST', body: { direction: f.direction, amount, categoryId: f.category, counterparty: f.party, description: f.description } });
+          return api(`/cash/${account.id}/movements`, { method: 'POST', body: { direction: f.direction, amount, categoryId: f.category, counterparty: f.party, description: f.description, attachmentIds: files.map((x) => x.id) } });
         case 'cashTransfer':
           return api('/cash/transfers', { method: 'POST', body: { fromAccountId: account.id, toAccountId: f.target, amount, description: f.description || undefined, fx } });
         case 'deposit':
@@ -84,7 +87,7 @@ export function AccountActions({ account, others, categories, canRecord, canClos
           throw new Error('Choisissez une action');
       }
     },
-    onSuccess: () => { setMode(null); setF((s) => ({ ...s, amount: '', description: '', party: '', counted: '', justification: '' })); router.refresh(); },
+    onSuccess: () => { setMode(null); setFiles([]); setF((s) => ({ ...s, amount: '', description: '', party: '', counted: '', justification: '' })); router.refresh(); },
   });
 
   if (modes.length === 0) return null;
@@ -160,6 +163,22 @@ export function AccountActions({ account, others, categories, canRecord, canClos
           {mode === 'movement' && (
             <div className="sm:col-span-2">
               <Field label="Motif"><input required className={inputClass} value={f.description} onChange={(e) => set('description', e.target.value)} /></Field>
+              <p className="mb-1 text-sm font-medium">Justificatif <span className="text-muted">(obligatoire au-delà du seuil fixé dans les paramètres)</span></p>
+              <ul className="mb-2 text-sm">
+                {files.map((x) => (
+                  <li key={x.id} className="flex items-center gap-2">
+                    <span>{x.fileName}</span>
+                    <button type="button" className="text-xs text-muted underline" onClick={() => setFiles((l) => l.filter((y) => y.id !== x.id))}>Retirer</button>
+                  </li>
+                ))}
+              </ul>
+              {files.length < 5 && (
+                <AttachmentUploader
+                  targetType="draft" targetId={entityId} kind={f.direction === 'IN' ? 'RECEIPT' : 'INVOICE'}
+                  label={files.length ? 'Ajouter un autre justificatif' : 'Joindre une facture / un justificatif (photo ou PDF)'}
+                  onUploaded={(a) => setFiles((l) => [...l, a])}
+                />
+              )}
             </div>
           )}
           <div className="sm:col-span-2">

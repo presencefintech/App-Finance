@@ -10,6 +10,7 @@ import { AppError } from '@/server/errors';
 import { postTransaction } from '@/server/ledger';
 import { D, toMoneyString } from '@/server/money';
 import { assertCan, assertEntityAccess, readableEntityIds } from '@/server/permissions';
+import { assertEvidenceProvided, linkEvidence } from '../attachments/evidence';
 import { assertPaymentMethodMatches, loadAccountFor, parseInputDate } from '../shared';
 
 type Tx = Prisma.TransactionClient;
@@ -21,8 +22,14 @@ const view = (i: Prisma.IncomeGetPayload<object>) => ({
 });
 export type IncomeView = ReturnType<typeof view>;
 
-/** Écrit une recette (écriture INCOME + fiche Income) dans la transaction fournie. */
-export async function recordIncome(tx: Tx, actor: CurrentUser, input: CreateIncomeInput, meta: RequestMeta) {
+/**
+ * Écrit une recette (écriture INCOME + fiche Income) dans la transaction fournie.
+ * Justificatif obligatoire au-delà du seuil de l'entité, sauf `skipEvidence` (import de totaux, rapprochement bancaire :
+ * le relevé ou le fichier source fait foi).
+ */
+export async function recordIncome(
+  tx: Tx, actor: CurrentUser, input: CreateIncomeInput, meta: RequestMeta, opts: { skipEvidence?: boolean } = {},
+) {
   assertEntityAccess(actor, input.entityId);
   assertCan(actor, 'transaction.record', input.entityId);
   const account = await loadAccountFor(tx, actor, input.accountId, 'transaction.record');
@@ -32,6 +39,8 @@ export async function recordIncome(tx: Tx, actor: CurrentUser, input: CreateInco
   const category = await tx.category.findFirst({ where: { id: input.categoryId, entityId: input.entityId, kind: 'INCOME', isActive: true } });
   if (!category) throw new AppError('VALIDATION_ERROR', 400, 'Catégorie de recette inconnue');
 
+  if (!opts.skipEvidence) await assertEvidenceProvided(tx, input);
+
   const date = parseInputDate(input.date);
   const incomeId = randomUUID();
   const posted = await postTransaction(tx, {
@@ -39,6 +48,7 @@ export async function recordIncome(tx: Tx, actor: CurrentUser, input: CreateInco
     createdById: actor.id, lines: [{ accountId: account.id, amount: D(input.amount) }],
     links: { incomeId }, ip: meta.ip,
   });
+  await linkEvidence(tx, actor, { entityId: input.entityId, txId: posted.id, attachmentIds: input.attachmentIds }, meta);
   const row = await tx.income.create({
     data: {
       id: incomeId, reference: posted.reference, entityId: input.entityId, date, source: input.source,
@@ -116,7 +126,7 @@ export async function importIncomesCsv(
 
   return prisma.$transaction(async (tx) => {
     const created = [];
-    for (const p of parsed) created.push(await recordIncome(tx, actor, p, meta));
+    for (const p of parsed) created.push(await recordIncome(tx, actor, p, meta, { skipEvidence: true }));
     return { imported: created.length, references: created.map((c) => c.reference) };
   });
 }

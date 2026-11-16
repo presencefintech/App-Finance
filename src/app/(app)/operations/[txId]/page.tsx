@@ -9,7 +9,7 @@ import { formatDate, formatDateTime } from '@/lib/format';
 import { can } from '@/lib/permissions';
 import { getCurrentUser } from '@/server/auth';
 import { AppError } from '@/server/errors';
-import { listForTransaction } from '@/server/modules/attachments/service';
+import { EVIDENCE_KINDS, listForTransaction } from '@/server/modules/attachments/service';
 import { getTransactionSummary } from '@/server/modules/registers/service';
 
 export default async function OperationPage({ params }: { params: Promise<{ txId: string }> }) {
@@ -24,7 +24,9 @@ export default async function OperationPage({ params }: { params: Promise<{ txId
     if (e instanceof AppError && e.httpStatus === 404) notFound();
     throw e;
   }
-  const files = await listForTransaction(user, txId);
+  const allFiles = await listForTransaction(user, txId);
+  const scans = allFiles.filter((f) => f.kind === 'SIGNED_REGISTER');
+  const evidence = allFiles.filter((f) => EVIDENCE_KINDS.includes(f.kind));
   const canUpload = can(user.roles, 'transaction.record', tx.entityId);
 
   return (
@@ -49,21 +51,38 @@ export default async function OperationPage({ params }: { params: Promise<{ txId
       </Card>
 
       <Card>
+        <CardTitle>Justificatifs</CardTitle>
+        <p className="mb-3 text-sm text-muted">
+          Facture, reçu ou toute pièce qui justifie l’opération. JPEG, PNG ou PDF, 10 Mo maximum.
+        </p>
+        <FileList files={evidence} empty="Aucun justificatif joint." />
+        {canUpload && <AttachmentUploader targetType="transaction" targetId={tx.id} kind="INVOICE" label="Ajouter un justificatif (photo / PDF)" />}
+      </Card>
+
+      <Card>
         <CardTitle>Documents signés (scans)</CardTitle>
         <p className="mb-3 text-sm text-muted">
           Imprimez le document, faites-le signer, puis photographiez-le ici. JPEG, PNG ou PDF, 10 Mo maximum.
         </p>
-        <ul className="mb-4 divide-y divide-border text-sm">
-          {files.length === 0 && <li className="py-2 text-muted">Aucun scan déposé.</li>}
-          {files.map((f) => (
-            <li key={f.id} className="flex items-center justify-between gap-2 py-2">
-              <a className="truncate text-primary hover:underline" href={`/api/v1/attachments/${f.id}/file`} target="_blank" rel="noreferrer">{f.fileName}</a>
-              <span className="shrink-0 text-xs text-muted">{formatDateTime(f.uploadedAt)} · empreinte {f.sha256.slice(0, 8)}</span>
-            </li>
-          ))}
-        </ul>
-        {canUpload && <AttachmentUploader targetType="transaction" targetId={tx.id} kind="SIGNED_REGISTER" />}
+        <FileList files={scans} empty="Aucun scan déposé." />
+        {canUpload && <AttachmentUploader targetType="transaction" targetId={tx.id} kind="SIGNED_REGISTER" label="Ajouter un scan signé (photo / PDF)" />}
       </Card>
     </div>
+  );
+}
+
+type FileRow = Awaited<ReturnType<typeof listForTransaction>>[number];
+
+function FileList({ files, empty }: { files: FileRow[]; empty: string }) {
+  return (
+    <ul className="mb-4 divide-y divide-border text-sm">
+      {files.length === 0 && <li className="py-2 text-muted">{empty}</li>}
+      {files.map((f) => (
+        <li key={f.id} className="flex items-center justify-between gap-2 py-2">
+          <a className="truncate text-primary hover:underline" href={`/api/v1/attachments/${f.id}/file`} target="_blank" rel="noreferrer">{f.fileName}</a>
+          <span className="shrink-0 text-xs text-muted">{formatDateTime(f.uploadedAt)} · empreinte {f.sha256.slice(0, 8)}</span>
+        </li>
+      ))}
+    </ul>
   );
 }

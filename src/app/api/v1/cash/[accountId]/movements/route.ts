@@ -18,7 +18,7 @@ export const POST = handler(
       if (!account || account.type !== 'CASH') throw new AppError('NOT_FOUND', 404, 'Caisse introuvable');
       const base = {
         entityId: account.entityId, accountId: account.id, categoryId: i.categoryId, amount: i.amount,
-        currency: account.currency, paymentMethod: 'CASH' as const, date: i.date,
+        currency: account.currency, paymentMethod: 'CASH' as const, date: i.date, attachmentIds: i.attachmentIds,
       };
       return i.direction === 'IN'
         ? recordIncome(tx, user!, { ...base, source: i.counterparty, note: i.description }, meta)

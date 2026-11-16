@@ -4,6 +4,9 @@ import { amountSchema, currencySchema, isoDateSchema, paginationSchema, rateSche
 const paymentMethod = z.enum(['CASH', 'BANK_TRANSFER', 'CHEQUE', 'MOBILE_MONEY', 'OTHER']);
 const id = z.string().min(1);
 
+/** Pièces déposées au préalable (justificatifs) à lier à l'opération. */
+export const attachmentIdsSchema = z.array(id).max(5).default([]);
+
 export const createIncomeSchema = z.object({
   entityId: id,
   date: isoDateSchema.optional(),
@@ -14,6 +17,7 @@ export const createIncomeSchema = z.object({
   paymentMethod,
   accountId: id,
   note: z.string().trim().max(500).optional(),
+  attachmentIds: attachmentIdsSchema,
 });
 
 export const createExpenseSchema = z.object({
@@ -27,6 +31,7 @@ export const createExpenseSchema = z.object({
   currency: currencySchema,
   paymentMethod,
   accountId: id,
+  attachmentIds: attachmentIdsSchema,
 });
 
 export const listOperationsSchema = paginationSchema.extend({
@@ -55,6 +60,7 @@ export const cashMovementSchema = z.object({
   counterparty: z.string().trim().min(2).max(160),
   description: z.string().trim().min(3).max(500),
   date: isoDateSchema.optional(),
+  attachmentIds: attachmentIdsSchema,
 });
 
 export const transferSchema = z.object({
@@ -115,8 +121,16 @@ export const importIncomesSchema = z.object({
   csv: z.string().min(1).max(500_000),
 });
 
-export type CreateIncomeInput = z.infer<typeof createIncomeSchema>;
-export type CreateExpenseInput = z.infer<typeof createExpenseSchema>;
+/** Entrée des services : `attachmentIds` facultatif (les imports et rapprochements n'en fournissent pas). */
+export type CreateIncomeInput = Omit<z.input<typeof createIncomeSchema>, 'attachmentIds'> & { attachmentIds?: string[] };
+export type CreateExpenseInput = Omit<z.input<typeof createExpenseSchema>, 'attachmentIds'> & { attachmentIds?: string[] };
 export type ListOperationsInput = z.infer<typeof listOperationsSchema>;
 export type FxFormInput = z.infer<typeof fxInputSchema>;
 export type CashClosingInput = z.infer<typeof cashClosingSchema>;
+
+export const evidenceThresholdSchema = z.object({
+  entityId: id,
+  currency: z.enum(['USD', 'CDF']),
+  /** Montant à partir duquel le justificatif est obligatoire ; null = justificatif facultatif. */
+  minAmount: z.string().trim().regex(/^\d{1,16}(\.\d{1,2})?$/, 'Montant invalide').nullable(),
+});

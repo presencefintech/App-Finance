@@ -9,6 +9,7 @@ import { AppError } from '@/server/errors';
 import { postTransaction } from '@/server/ledger';
 import { D, toMoneyString } from '@/server/money';
 import { assertCan, assertEntityAccess, readableEntityIds } from '@/server/permissions';
+import { assertEvidenceProvided, linkEvidence } from '../attachments/evidence';
 import { assertPaymentMethodMatches, loadAccountFor, parseInputDate } from '../shared';
 
 type Tx = Prisma.TransactionClient;
@@ -22,7 +23,9 @@ const view = (e: Prisma.ExpenseGetPayload<object>) => ({
 export type ExpenseView = ReturnType<typeof view>;
 
 /** Dépense directe (hors demande de fonds). Les décaissements de demandes passent par le service des demandes. */
-export async function recordExpense(tx: Tx, actor: CurrentUser, input: CreateExpenseInput, meta: RequestMeta) {
+export async function recordExpense(
+  tx: Tx, actor: CurrentUser, input: CreateExpenseInput, meta: RequestMeta, opts: { skipEvidence?: boolean } = {},
+) {
   assertEntityAccess(actor, input.entityId);
   assertCan(actor, 'transaction.record', input.entityId);
   const account = await loadAccountFor(tx, actor, input.accountId, 'transaction.record');
@@ -36,6 +39,8 @@ export async function recordExpense(tx: Tx, actor: CurrentUser, input: CreateExp
     if (!dep) throw new AppError('VALIDATION_ERROR', 400, 'Département inconnu');
   }
 
+  if (!opts.skipEvidence) await assertEvidenceProvided(tx, input);
+
   const date = parseInputDate(input.date);
   const expenseId = randomUUID();
   const posted = await postTransaction(tx, {
@@ -43,6 +48,7 @@ export async function recordExpense(tx: Tx, actor: CurrentUser, input: CreateExp
     createdById: actor.id, lines: [{ accountId: account.id, amount: D(input.amount).negated() }],
     links: { expenseId }, ip: meta.ip,
   });
+  await linkEvidence(tx, actor, { entityId: input.entityId, txId: posted.id, attachmentIds: input.attachmentIds }, meta);
   const row = await tx.expense.create({
     data: {
       id: expenseId, reference: posted.reference, entityId: input.entityId, date, categoryId: input.categoryId,

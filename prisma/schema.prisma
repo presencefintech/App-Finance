@@ -484,6 +484,20 @@ model Attachment {
 
   @@index([fundRequestId])
   @@index([txId])
+  @@index([uploadedAt])
+  @@index([organizationId])
+}
+
+/// Montant à partir duquel un justificatif est obligatoire (recettes et dépenses), par entité et par devise.
+/// Sans ligne : justificatif facultatif.
+model EvidenceThreshold {
+  organizationId String   @default(dbgenerated("current_setting('app.org_id'::text, true)"))
+  id             String   @id @default(cuid())
+  entityId       String
+  currency       Currency
+  minAmount      Decimal  @db.Decimal(18, 2)
+
+  @@unique([entityId, currency])
   @@index([organizationId])
 }
 

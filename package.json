@@ -13,7 +13,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:demo": "tsx --conditions=react-server prisma/seed-demo.ts --yes",
     "db:setup-role": "tsx scripts/setup-app-role.ts",
-    "db:attachments-to-s3": "tsx --conditions=react-server scripts/migrate-attachments-to-s3.ts"
+    "db:attachments-to-s3": "tsx --conditions=react-server scripts/migrate-attachments-to-s3.ts",
+    "db:purge-draft-attachments": "tsx --conditions=react-server scripts/purge-draft-attachments.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

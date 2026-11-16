@@ -260,7 +260,7 @@ export const createFromLine = (
       const income = await recordIncome(tx, actor, {
         entityId: st.entityId, accountId: st.accountId, categoryId: input.categoryId, source: description.slice(0, 160),
         amount: fmt(amount), currency: account.currency, paymentMethod: 'BANK_TRANSFER', date,
-      }, meta);
+      }, meta, { skipEvidence: true }); // le relevé bancaire fait foi
       const t = await tx.financialTransaction.findFirstOrThrow({ where: { reference: income.reference }, select: { id: true, reference: true } });
       txRef = t;
     }

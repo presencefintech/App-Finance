@@ -10,6 +10,7 @@ import { useStepUp } from '@/components/providers';
 import { formatMoney } from '@/lib/money';
 
 interface Limit { entityId: string; role: 'CONTROLLER' | 'DIRECTOR'; currency: 'USD' | 'CDF'; maxAmount: string | null; isDefault: boolean }
+interface Threshold { entityId: string; currency: 'USD' | 'CDF'; minAmount: string | null }
 interface Setting { key: string; value: string; default: string }
 
 const SETTING_LABELS: Record<string, string> = {
@@ -29,6 +30,13 @@ export function LimitsAdmin({ entities }: { entities: { id: string; name: string
   const saveLimit = useMutation({
     mutationFn: (l: Limit) => withStepUp(() => api('/settings/approval-limits', { method: 'PUT', body: { entityId, role: l.role, currency: l.currency, maxAmount: edit[`${l.role}-${l.currency}`] } })),
     onSuccess: () => { setEdit({}); qc.invalidateQueries({ queryKey: ['limits'] }); },
+  });
+  const [thr, setThr] = useState<Record<string, string>>({});
+  const thresholds = useQuery({ queryKey: ['evidence-thresholds', entityId], queryFn: () => api<{ data: Threshold[] }>(`/evidence-thresholds?entityId=${entityId}`) });
+  const saveThreshold = useMutation({
+    mutationFn: (v: { currency: 'USD' | 'CDF'; minAmount: string | null }) =>
+      withStepUp(() => api('/evidence-thresholds', { method: 'PUT', body: { entityId, ...v } })),
+    onSuccess: () => { setThr({}); qc.invalidateQueries({ queryKey: ['evidence-thresholds'] }); },
   });
   const saveSetting = useMutation({
     mutationFn: (v: { key: string; value: string }) => withStepUp(() => api('/settings/app', { method: 'PUT', body: v })),
@@ -70,6 +78,34 @@ export function LimitsAdmin({ entities }: { entities: { id: string; name: string
         </table>
         <p className="mt-3 text-xs text-muted">Modifier un plafond demande une confirmation par code 2FA et est tracé dans le journal d’audit.</p>
         <ErrorText>{saveLimit.error?.message}</ErrorText>
+      </Card>
+
+      <Card>
+        <CardTitle>Justificatifs obligatoires</CardTitle>
+        <p className="mb-3 text-sm text-muted">
+          À partir de ce montant, une recette ou une dépense de l’entité « {entities.find((e) => e.id === entityId)?.name} » ne s’enregistre
+          qu’avec un justificatif joint (facture, reçu). Sans seuil, le justificatif reste facultatif. Les transferts ne sont pas concernés.
+        </p>
+        <table className="w-full max-w-2xl text-sm">
+          <thead className="text-left text-xs text-muted"><tr><th className="pb-2">Devise</th><th>Seuil actuel</th><th /></tr></thead>
+          <tbody className="divide-y divide-border">
+            {thresholds.data?.data.map((t) => (
+              <tr key={t.currency}>
+                <td className="py-2">{t.currency}</td>
+                <td>{t.minAmount ? formatMoney(t.minAmount, t.currency) : 'Aucun (facultatif)'}</td>
+                <td className="py-2 text-right">
+                  <input
+                    className={`${inputClass} mr-2 inline-block w-32`} placeholder="Nouveau seuil" inputMode="decimal"
+                    value={thr[t.currency] ?? ''} onChange={(e) => setThr({ ...thr, [t.currency]: e.target.value.replace(',', '.') })}
+                  />
+                  <Button variant="ghost" disabled={!thr[t.currency] || saveThreshold.isPending} onClick={() => saveThreshold.mutate({ currency: t.currency, minAmount: thr[t.currency]! })}>Enregistrer</Button>
+                  {t.minAmount && <Button variant="ghost" disabled={saveThreshold.isPending} onClick={() => saveThreshold.mutate({ currency: t.currency, minAmount: null })}>Retirer</Button>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <ErrorText>{saveThreshold.error?.message}</ErrorText>
       </Card>
 
       <Card>
