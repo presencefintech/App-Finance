@@ -26,7 +26,7 @@ export async function requestPasswordReset(email: string): Promise<void> {
 
   const token = randomBytes(32).toString('hex');
   await sys.passwordResetToken.create({ data: { id: sha256(token), userId: user.id, expiresAt: new Date(Date.now() + TTL_MS) } });
-  const base = process.env.APP_URL?.replace(/\/$/, '') ?? '';
+  const base = process.env.APP_URL?.split(/[\s,;]+/).filter(Boolean).at(-1)?.replace(/\/$/, '') ?? '';
   sendEmail({
     to: user.email,
     subject: 'Finance Control — Réinitialisation de votre mot de passe',

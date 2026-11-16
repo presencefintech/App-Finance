@@ -19,7 +19,7 @@ export async function notifyUsers(db: Db, userIds: string[], input: NotifyInput)
   // Copie par e-mail (si Resend est configuré) : mise en file, envoyée seulement si la transaction aboutit.
   if (!emailEnabled()) return;
   const users = await db.user.findMany({ where: { id: { in: unique }, isActive: true }, select: { email: true } });
-  const base = process.env.APP_URL?.replace(/\/$/, '') ?? '';
+  const base = process.env.APP_URL?.split(/[\s,;]+/).filter(Boolean).at(-1)?.replace(/\/$/, '') ?? '';
   const link = input.href ? `\n\nOuvrir : ${base}${input.href}` : '';
   for (const u of users) {
     queueEmail({ to: u.email, subject: `Finance Control — ${input.title}`, text: `${input.title}\n\n${input.body}${link}` });

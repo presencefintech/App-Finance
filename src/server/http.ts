@@ -35,8 +35,19 @@ function assertSameOrigin(request: Request) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return;
   const appUrl = process.env.APP_URL;
   if (!appUrl) return; // non configuré (dev/tests)
+  // APP_URL peut contenir plusieurs origines autorisées (séparées par virgule, espace ou retour à la ligne).
+  const allowed = appUrl
+    .split(/[\s,;]+/)
+    .filter(Boolean)
+    .map((u) => {
+      try {
+        return new URL(u).origin;
+      } catch {
+        return null;
+      }
+    });
   const origin = request.headers.get('origin');
-  if (!origin || origin !== new URL(appUrl).origin) {
+  if (!origin || !allowed.includes(origin)) {
     throw new AppError('BAD_ORIGIN', 403, 'Origine de la requête refusée');
   }
 }
